@@ -46,6 +46,11 @@ const routes = [
         component: () => import('@/pages/RemindersPage.vue')
       },
       {
+        path: 'tree',
+        name: 'Tree',
+        component: () => import('@/pages/TreePage.vue')
+      },
+      {
         path: 'settings',
         name: 'Settings',
         component: () => import('@/pages/SettingsPage.vue')

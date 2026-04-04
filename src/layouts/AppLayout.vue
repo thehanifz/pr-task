@@ -50,6 +50,11 @@
           <span>⏸️</span> Ditunda
         </router-link>
 
+        <div class="nav-section">Tools</div>
+        <router-link to="/tree" class="nav-item" @click="sidebarOpen = false">
+          <span>🌳</span> Tree Diagram
+        </router-link>
+
         <div class="nav-section">Lainnya</div>
         <router-link to="/settings" class="nav-item" @click="sidebarOpen = false">
           <span>⚙️</span> Pengaturan
@@ -121,7 +126,6 @@ function lockApp() { auth.lock(); router.push('/lock') }
 }
 .nav-item:hover { background: var(--surface); color: var(--text); }
 .nav-item.router-link-active { background: var(--accent-glow); color: var(--accent); border: 1px solid rgba(59,130,246,0.2); }
-/* Exact match for dashboard only */
 .nav-item[href="/"].router-link-active:not(.router-link-exact-active) { background: transparent; color: var(--text2); border: none; }
 .nav-item[href="/"].router-link-exact-active { background: var(--accent-glow); color: var(--accent); border: 1px solid rgba(59,130,246,0.2); }
 
