@@ -4,18 +4,41 @@
     <div class="page-header">
       <div>
         <h1 class="page-title">🌳 Tree Diagram</h1>
-        <p class="page-sub">Diagram pohon interaktif — klik untuk expand/collapse, klik kanan untuk warna, double-click untuk rename</p>
+        <p class="page-sub">Klik = expand/collapse · Klik kanan = edit nama & warna · Hover = tombol +/×</p>
       </div>
       <div class="header-actions">
-        <!-- Import -->
+        <!-- Import JSON -->
         <label class="btn btn-ghost" title="Import JSON">
           <span>📂 Import</span>
           <input type="file" accept=".json" style="display:none" @change="handleImport" />
         </label>
         <!-- Export JSON -->
-        <button class="btn btn-ghost" @click="store.exportJSON()" title="Export JSON">💾 Export</button>
+        <button class="btn btn-ghost" @click="treeStore.exportJSON()" title="Export JSON">💾 Export</button>
         <!-- Export PNG -->
         <button class="btn btn-ghost" @click="exportPNG" title="Export PNG">🖼️ PNG</button>
+
+        <!-- Sheets Load -->
+        <button
+          class="btn btn-sheets"
+          :disabled="sheetsLoading"
+          @click="handleLoadSheets"
+          title="Load dari Google Sheets"
+        >
+          <span v-if="treeStore.sheetsStatus === 'loading'">⏳ Loading...</span>
+          <span v-else>☁️ Load</span>
+        </button>
+
+        <!-- Sheets Save -->
+        <button
+          class="btn btn-sheets-save"
+          :disabled="sheetsSaving"
+          @click="handleSaveSheets"
+          title="Save ke Google Sheets"
+        >
+          <span v-if="treeStore.sheetsStatus === 'saving'">⏳ Saving...</span>
+          <span v-else>☁️ Save</span>
+        </button>
+
         <!-- Fit View -->
         <button class="btn btn-ghost" @click="diagram?.fitView()" title="Fit to screen">⊡ Fit</button>
         <!-- Reset -->
@@ -23,11 +46,10 @@
       </div>
     </div>
 
-    <!-- Legend / Shortcuts -->
+    <!-- Shortcuts -->
     <div class="shortcuts">
       <span>🖱️ <b>Click</b> = expand/collapse</span>
-      <span>🖱️ <b>Klik kanan</b> = ganti warna</span>
-      <span>🖱️ <b>Double-click</b> = rename</span>
+      <span>🖱️ <b>Klik kanan</b> = edit nama & warna</span>
       <span>➕ <b>Hover</b> = tampil tombol +/×</span>
       <span>🔍 <b>Scroll</b> = zoom</span>
       <span>✋ <b>Drag</b> = pan</span>
@@ -48,6 +70,13 @@
       <div class="stat-chips">
         <span class="chip">📦 {{ totalNodes }} nodes</span>
         <span class="chip">🔗 {{ totalLinks }} links</span>
+        <!-- Sheets status chip -->
+        <span
+          v-if="treeStore.sheetsStatus !== 'idle'"
+          :class="['chip', 'chip-sheets', treeStore.sheetsStatus]"
+        >
+          {{ treeStore.sheetsMsg }}
+        </span>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="btn-sm" @click="addRootChild">+ Tambah Node Utama</button>
@@ -61,12 +90,8 @@ import { ref, computed } from 'vue'
 import { useTreeStore } from '@/stores/tree'
 import TreeDiagram from '@/components/TreeDiagram.vue'
 
-const store   = ref(useTreeStore())
-const diagram = ref(null)
-
-// unwrap store reactivity for direct use
 const treeStore = useTreeStore()
-store.value = treeStore
+const diagram   = ref(null)
 
 const notif = ref({ show: false, msg: '', type: 'success' })
 let notifTimer = null
@@ -74,7 +99,7 @@ let notifTimer = null
 function showNotif(msg, type = 'success') {
   clearTimeout(notifTimer)
   notif.value = { show: true, msg, type }
-  notifTimer = setTimeout(() => { notif.value.show = false }, 3000)
+  notifTimer = setTimeout(() => { notif.value.show = false }, 3500)
 }
 
 // Count nodes/links recursively
@@ -91,6 +116,9 @@ function countLinks(node) {
 
 const totalNodes = computed(() => countNodes(treeStore.tree))
 const totalLinks = computed(() => countLinks(treeStore.tree))
+
+const sheetsLoading = computed(() => treeStore.sheetsStatus === 'loading')
+const sheetsSaving  = computed(() => treeStore.sheetsStatus === 'saving')
 
 function addRootChild() {
   treeStore.addChild('root')
@@ -117,6 +145,29 @@ async function handleImport(e) {
     showNotif(`❌ Gagal import: ${result.error}`, 'error')
   }
   e.target.value = ''
+}
+
+async function handleSaveSheets() {
+  const result = await treeStore.saveToSheets()
+  if (result.ok) {
+    showNotif('✅ Tree tersimpan ke Google Sheets')
+  } else {
+    showNotif(`❌ Gagal save: ${result.error}`, 'error')
+  }
+}
+
+async function handleLoadSheets() {
+  const result = await treeStore.loadFromSheets()
+  if (result.ok) {
+    if (result.empty) {
+      showNotif('⚠️ Sheet tree_nodes masih kosong', 'warning')
+    } else {
+      showNotif('✅ Tree dimuat dari Google Sheets')
+      setTimeout(() => diagram.value?.fitView(), 300)
+    }
+  } else {
+    showNotif(`❌ Gagal load: ${result.error}`, 'error')
+  }
 }
 
 function exportPNG() {
@@ -194,6 +245,23 @@ function exportPNG() {
   border: 1px solid var(--border, #1e2330);
 }
 .btn-ghost:hover { background: var(--surface2, #1e2844); color: var(--text, #e2e8f0); }
+
+.btn-sheets {
+  background: rgba(16,185,129,0.1);
+  color: #10b981;
+  border: 1px solid rgba(16,185,129,0.25);
+}
+.btn-sheets:hover:not(:disabled) { background: rgba(16,185,129,0.2); }
+.btn-sheets:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-sheets-save {
+  background: rgba(59,130,246,0.1);
+  color: #3b82f6;
+  border: 1px solid rgba(59,130,246,0.25);
+}
+.btn-sheets-save:hover:not(:disabled) { background: rgba(59,130,246,0.2); }
+.btn-sheets-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
 .btn-danger {
   background: rgba(239,68,68,0.12);
   color: #ef4444;
@@ -223,6 +291,7 @@ function exportPNG() {
 }
 .notif.success { background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.25); }
 .notif.error   { background: rgba(239,68,68,0.15);  color: #ef4444; border: 1px solid rgba(239,68,68,0.25); }
+.notif.warning { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.25); }
 
 .tree-canvas {
   flex: 1;
@@ -242,7 +311,7 @@ function exportPNG() {
   flex-wrap: wrap;
   gap: 8px;
 }
-.stat-chips { display: flex; gap: 8px; }
+.stat-chips { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
 .chip {
   font-size: 0.72rem;
   font-weight: 700;
@@ -252,6 +321,11 @@ function exportPNG() {
   color: var(--text2, #9ca3af);
   font-family: var(--font-mono, monospace);
 }
+.chip-sheets.ok      { background: rgba(16,185,129,0.12); color: #10b981; }
+.chip-sheets.error   { background: rgba(239,68,68,0.12);  color: #ef4444; }
+.chip-sheets.loading,
+.chip-sheets.saving  { background: rgba(245,158,11,0.12); color: #f59e0b; }
+
 .btn-sm {
   padding: 6px 12px;
   border-radius: var(--radius, 8px);

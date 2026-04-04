@@ -4,14 +4,61 @@
       <g ref="gRef" />
     </svg>
 
-    <!-- Color Picker Popup -->
-    <div v-if="colorPicker.show" class="color-popup" :style="{ top: colorPicker.y + 'px', left: colorPicker.x + 'px' }">
-      <div class="color-popup-title">Node Color</div>
-      <div class="color-swatches">
-        <button v-for="c in swatches" :key="c" class="swatch" :style="{ background: c }" @click="applyColor(c)" />
+    <!-- Node Context Popup (klik kanan) -->
+    <div
+      v-if="popup.show"
+      class="node-popup"
+      :style="{ top: popup.y + 'px', left: popup.x + 'px' }"
+      @click.stop
+    >
+      <!-- Header -->
+      <div class="popup-header">
+        <span class="popup-title">✏️ Edit Node</span>
+        <button class="popup-close-x" @click="closePopup">×</button>
       </div>
-      <input type="color" class="color-custom" :value="colorPicker.current" @input="applyColor($event.target.value)" />
-      <button class="color-close" @click="colorPicker.show = false">✕ Tutup</button>
+
+      <!-- Rename -->
+      <div class="popup-section">
+        <label class="popup-label">Nama</label>
+        <div class="rename-row">
+          <input
+            ref="renameInput"
+            class="rename-input"
+            v-model="popup.nameVal"
+            @keydown.enter="applyRename"
+            @keydown.esc="closePopup"
+            maxlength="40"
+          />
+          <button class="rename-apply" @click="applyRename" title="Simpan">✔</button>
+        </div>
+      </div>
+
+      <!-- Divider -->
+      <div class="popup-divider" />
+
+      <!-- Color Swatches -->
+      <div class="popup-section">
+        <label class="popup-label">Warna Node</label>
+        <div class="color-swatches">
+          <button
+            v-for="c in swatches"
+            :key="c"
+            class="swatch"
+            :class="{ active: popup.colorVal === c }"
+            :style="{ background: c }"
+            @click="applyColor(c)"
+          />
+        </div>
+        <input
+          type="color"
+          class="color-custom"
+          :value="popup.colorVal"
+          @input="applyColor($event.target.value)"
+        />
+      </div>
+
+      <!-- Close -->
+      <button class="popup-close-btn" @click="closePopup">✕ Tutup</button>
     </div>
   </div>
 </template>
@@ -21,12 +68,21 @@ import { ref, watch, onMounted, onUnmounted, reactive, nextTick } from 'vue'
 import * as d3 from 'd3'
 import { useTreeStore } from '@/stores/tree'
 
-const store = useTreeStore()
-const svgRef = ref(null)
-const gRef   = ref(null)
-const wrapRef = ref(null)
+const store    = useTreeStore()
+const svgRef   = ref(null)
+const gRef     = ref(null)
+const wrapRef  = ref(null)
+const renameInput = ref(null)
 
-const colorPicker = reactive({ show: false, nodeId: null, current: '#3b82f6', x: 0, y: 0 })
+// Single unified popup (replace both color picker + dblclick rename)
+const popup = reactive({
+  show:     false,
+  nodeId:   null,
+  nameVal:  '',
+  colorVal: '#3b82f6',
+  x: 0,
+  y: 0
+})
 
 const swatches = [
   '#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6',
@@ -40,8 +96,49 @@ const NODE_RX = 8
 
 let svg, g, zoom
 
+function openPopup(event, d) {
+  event.preventDefault()
+  event.stopPropagation()
+  const rect = wrapRef.value.getBoundingClientRect()
+  let x = event.clientX - rect.left
+  let y = event.clientY - rect.top
+  // Clamp agar tidak keluar batas kanan/bawah
+  const popupW = 210
+  const popupH = 220
+  if (x + popupW > rect.width)  x = rect.width  - popupW - 8
+  if (y + popupH > rect.height) y = rect.height - popupH - 8
+  popup.show     = true
+  popup.nodeId   = d.data.id
+  popup.nameVal  = d.data.name
+  popup.colorVal = d.data.color || '#3b82f6'
+  popup.x = x
+  popup.y = y
+  nextTick(() => {
+    renameInput.value?.focus()
+    renameInput.value?.select()
+  })
+}
+
+function closePopup() {
+  popup.show = false
+}
+
+function applyRename() {
+  const name = popup.nameVal.trim()
+  if (name && popup.nodeId) {
+    store.updateNodeName(popup.nodeId, name)
+  }
+  closePopup()
+}
+
+function applyColor(color) {
+  popup.colorVal = color
+  if (popup.nodeId) {
+    store.updateNodeColor(popup.nodeId, color)
+  }
+}
+
 function buildD3Tree(data) {
-  // flatten collapsed subtrees
   function clone(node) {
     const n = { ...node, _children: node.children || [] }
     n.children = node.collapsed ? null : (node.children || []).map(clone)
@@ -60,10 +157,7 @@ function render() {
   const nodes = root.descendants()
   const links = root.links()
 
-  const svgEl = d3.select(svgRef.value)
-  const gEl   = d3.select(gRef.value)
-
-  // Clear
+  const gEl = d3.select(gRef.value)
   gEl.selectAll('*').remove()
 
   // Links
@@ -108,7 +202,7 @@ function render() {
     .attr('pointer-events', 'none')
     .text(d => d.data.name.length > 16 ? d.data.name.slice(0, 15) + '…' : d.data.name)
 
-  // Collapse indicator (dot at right edge)
+  // Collapse indicator dot
   nodeG.filter(d => d.data._children && d.data._children.length > 0)
     .append('circle')
     .attr('cx', NODE_W / 2)
@@ -194,45 +288,23 @@ function render() {
       d3.select(this).select('.del-btn').style('opacity', 0)
     })
 
-  // Click = toggle collapse
+  // Click = toggle collapse (hanya jika punya anak)
   nodeG.on('click', (event, d) => {
     if (d.data._children && d.data._children.length > 0) {
       store.toggleCollapse(d.data.id)
     }
   })
 
-  // Right-click = color picker
+  // Right-click = buka popup edit (rename + color)
+  // dblclick dihapus — tidak ada lagi prompt() yang terpicu saat geser
   nodeG.on('contextmenu', (event, d) => {
-    event.preventDefault()
-    const rect = wrapRef.value.getBoundingClientRect()
-    colorPicker.show   = true
-    colorPicker.nodeId = d.data.id
-    colorPicker.current = d.data.color || '#3b82f6'
-    colorPicker.x = event.clientX - rect.left
-    colorPicker.y = event.clientY - rect.top
+    openPopup(event, d)
   })
-
-  // Double-click = rename
-  nodeG.on('dblclick', (event, d) => {
-    event.stopPropagation()
-    const newName = prompt('Rename node:', d.data.name)
-    if (newName && newName.trim()) {
-      store.updateNodeName(d.data.id, newName.trim())
-    }
-  })
-}
-
-function applyColor(color) {
-  colorPicker.current = color
-  if (colorPicker.nodeId) {
-    store.updateNodeColor(colorPicker.nodeId, color)
-  }
 }
 
 function fitView() {
   if (!svgRef.value || !gRef.value || !zoom) return
   const svgEl = d3.select(svgRef.value)
-  const gEl   = d3.select(gRef.value)
   const bounds = gRef.value.getBBox()
   const w = svgRef.value.clientWidth
   const h = svgRef.value.clientHeight
@@ -258,12 +330,18 @@ onMounted(() => {
   render()
   nextTick(() => fitView())
 
-  // Close color picker on outside click
-  document.addEventListener('click', () => { colorPicker.show = false })
+  // Tutup popup saat klik di luar
+  document.addEventListener('click', closePopup)
+  document.addEventListener('contextmenu', (e) => {
+    // Jika klik kanan di luar SVG node, tutup popup
+    if (!e.target.closest('.node-popup') && !e.target.closest('.node')) {
+      closePopup()
+    }
+  })
 })
 
 onUnmounted(() => {
-  document.removeEventListener('click', () => { colorPicker.show = false })
+  document.removeEventListener('click', closePopup)
 })
 
 watch(() => JSON.stringify(store.tree), () => {
@@ -286,24 +364,93 @@ watch(() => JSON.stringify(store.tree), () => {
   height: 100%;
   display: block;
 }
-.color-popup {
+
+/* ── Node Popup ───────────────────────────── */
+.node-popup {
   position: absolute;
   z-index: 200;
   background: var(--bg2, #161b2e);
   border: 1px solid var(--border, #1e2330);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 12px;
-  min-width: 190px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  min-width: 210px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+  animation: popupIn 0.12s ease;
 }
-.color-popup-title {
-  font-size: 0.72rem;
+@keyframes popupIn {
+  from { opacity: 0; transform: scale(0.94) translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.popup-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text, #e2e8f0);
+}
+.popup-close-x {
+  background: none;
+  border: none;
+  color: var(--muted, #6b7280);
+  font-size: 1.1rem;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0 2px;
+}
+.popup-close-x:hover { color: var(--text, #e2e8f0); }
+
+.popup-section { margin-bottom: 10px; }
+.popup-label {
+  display: block;
+  font-size: 0.68rem;
   font-weight: 700;
   color: var(--muted, #6b7280);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  margin-bottom: 8px;
+  letter-spacing: 0.07em;
+  margin-bottom: 6px;
 }
+
+/* Rename row */
+.rename-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.rename-input {
+  flex: 1;
+  padding: 6px 9px;
+  border-radius: 6px;
+  border: 1px solid var(--border, #1e2330);
+  background: var(--bg, #0f1117);
+  color: var(--text, #e2e8f0);
+  font-size: 0.8rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.rename-input:focus { border-color: rgba(59,130,246,0.5); }
+.rename-apply {
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(59,130,246,0.15);
+  border: 1px solid rgba(59,130,246,0.3);
+  color: #3b82f6;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.rename-apply:hover { background: rgba(59,130,246,0.28); }
+
+.popup-divider {
+  height: 1px;
+  background: var(--border, #1e2330);
+  margin: 8px 0;
+}
+
+/* Color swatches */
 .color-swatches {
   display: flex;
   flex-wrap: wrap;
@@ -318,7 +465,8 @@ watch(() => JSON.stringify(store.tree), () => {
   cursor: pointer;
   transition: transform 0.1s;
 }
-.swatch:hover { transform: scale(1.2); border-color: rgba(255,255,255,0.4); }
+.swatch:hover  { transform: scale(1.2); border-color: rgba(255,255,255,0.4); }
+.swatch.active { border-color: #fff; transform: scale(1.15); }
 .color-custom {
   width: 100%;
   height: 32px;
@@ -326,17 +474,19 @@ watch(() => JSON.stringify(store.tree), () => {
   border: 1px solid var(--border, #1e2330);
   background: transparent;
   cursor: pointer;
-  margin-bottom: 8px;
 }
-.color-close {
+
+.popup-close-btn {
   width: 100%;
-  padding: 5px;
+  margin-top: 4px;
+  padding: 6px;
   border-radius: 6px;
-  background: rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.05);
   border: none;
   color: var(--text2, #9ca3af);
   font-size: 0.75rem;
   cursor: pointer;
+  transition: background 0.15s;
 }
-.color-close:hover { background: rgba(255,255,255,0.12); }
+.popup-close-btn:hover { background: rgba(255,255,255,0.12); }
 </style>

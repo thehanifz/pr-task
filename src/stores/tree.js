@@ -1,5 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import { useAuthStore } from './auth'
+import { saveTree, loadTree } from '@/services/googleSheets'
 
 const DEFAULT_TREE = {
   id: 'root',
@@ -86,7 +88,12 @@ function findParent(node, id) {
 }
 
 export const useTreeStore = defineStore('tree', () => {
+  const auth = useAuthStore()
   const tree = ref(loadFromStorage())
+
+  // Sheets sync status
+  const sheetsStatus  = ref('idle')  // idle | loading | saving | ok | error
+  const sheetsMsg     = ref('')
 
   function save() {
     saveToStorage(tree.value)
@@ -179,5 +186,69 @@ export const useTreeStore = defineStore('tree', () => {
     }
   }
 
-  return { tree, toggleCollapse, updateNodeColor, updateNodeName, addChild, deleteNode, resetTree, exportJSON, importJSON }
+  // ── Google Sheets sync ──────────────────────
+
+  async function saveToSheets() {
+    if (!auth.sheetId || !auth.credential) {
+      sheetsStatus.value = 'error'
+      sheetsMsg.value    = 'Credentials belum diisi'
+      return { ok: false, error: sheetsMsg.value }
+    }
+    sheetsStatus.value = 'saving'
+    sheetsMsg.value    = 'Menyimpan ke Sheets...'
+    try {
+      await saveTree(tree.value, auth.sheetId, auth.credential)
+      sheetsStatus.value = 'ok'
+      sheetsMsg.value    = '✅ Tersimpan ke Google Sheets'
+      return { ok: true }
+    } catch (e) {
+      sheetsStatus.value = 'error'
+      sheetsMsg.value    = e.message || 'Gagal menyimpan'
+      return { ok: false, error: sheetsMsg.value }
+    }
+  }
+
+  async function loadFromSheets() {
+    if (!auth.sheetId || !auth.credential) {
+      sheetsStatus.value = 'error'
+      sheetsMsg.value    = 'Credentials belum diisi'
+      return { ok: false, error: sheetsMsg.value }
+    }
+    sheetsStatus.value = 'loading'
+    sheetsMsg.value    = 'Memuat dari Sheets...'
+    try {
+      const loaded = await loadTree(auth.sheetId, auth.credential)
+      if (loaded) {
+        tree.value = loaded
+        save()  // sync ke localStorage juga
+        sheetsStatus.value = 'ok'
+        sheetsMsg.value    = '✅ Tree dimuat dari Google Sheets'
+        return { ok: true }
+      } else {
+        sheetsStatus.value = 'ok'
+        sheetsMsg.value    = 'Sheet kosong, tree tidak berubah'
+        return { ok: true, empty: true }
+      }
+    } catch (e) {
+      sheetsStatus.value = 'error'
+      sheetsMsg.value    = e.message || 'Gagal memuat'
+      return { ok: false, error: sheetsMsg.value }
+    }
+  }
+
+  return {
+    tree,
+    sheetsStatus,
+    sheetsMsg,
+    toggleCollapse,
+    updateNodeColor,
+    updateNodeName,
+    addChild,
+    deleteNode,
+    resetTree,
+    exportJSON,
+    importJSON,
+    saveToSheets,
+    loadFromSheets
+  }
 })
