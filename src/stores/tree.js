@@ -1,0 +1,183 @@
+import { defineStore } from 'pinia'
+import { ref } from 'vue'
+
+const DEFAULT_TREE = {
+  id: 'root',
+  name: 'Root Node',
+  color: '#3b82f6',
+  collapsed: false,
+  children: [
+    {
+      id: 'node-1',
+      name: 'Frontend',
+      color: '#10b981',
+      collapsed: false,
+      children: [
+        { id: 'node-1-1', name: 'Vue Components', color: '#10b981', collapsed: false, children: [] },
+        { id: 'node-1-2', name: 'Styling / CSS', color: '#10b981', collapsed: false, children: [] },
+        { id: 'node-1-3', name: 'State Management', color: '#10b981', collapsed: false, children: [] }
+      ]
+    },
+    {
+      id: 'node-2',
+      name: 'Backend',
+      color: '#f59e0b',
+      collapsed: false,
+      children: [
+        { id: 'node-2-1', name: 'API Routes', color: '#f59e0b', collapsed: false, children: [] },
+        { id: 'node-2-2', name: 'Database', color: '#f59e0b', collapsed: false, children: [
+          { id: 'node-2-2-1', name: 'PostgreSQL', color: '#f59e0b', collapsed: false, children: [] },
+          { id: 'node-2-2-2', name: 'Redis Cache', color: '#f59e0b', collapsed: false, children: [] }
+        ]}
+      ]
+    },
+    {
+      id: 'node-3',
+      name: 'DevOps',
+      color: '#8b5cf6',
+      collapsed: false,
+      children: [
+        { id: 'node-3-1', name: 'Docker', color: '#8b5cf6', collapsed: false, children: [] },
+        { id: 'node-3-2', name: 'CI/CD Pipeline', color: '#8b5cf6', collapsed: false, children: [] }
+      ]
+    }
+  ]
+}
+
+function loadFromStorage() {
+  try {
+    const saved = localStorage.getItem('pr-task-tree')
+    return saved ? JSON.parse(saved) : JSON.parse(JSON.stringify(DEFAULT_TREE))
+  } catch {
+    return JSON.parse(JSON.stringify(DEFAULT_TREE))
+  }
+}
+
+function saveToStorage(tree) {
+  try {
+    localStorage.setItem('pr-task-tree', JSON.stringify(tree))
+  } catch {}
+}
+
+function generateId() {
+  return 'node-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7)
+}
+
+function findNode(node, id) {
+  if (node.id === id) return node
+  if (node.children) {
+    for (const child of node.children) {
+      const found = findNode(child, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+function findParent(node, id) {
+  if (node.children) {
+    for (const child of node.children) {
+      if (child.id === id) return node
+      const found = findParent(child, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+export const useTreeStore = defineStore('tree', () => {
+  const tree = ref(loadFromStorage())
+
+  function save() {
+    saveToStorage(tree.value)
+  }
+
+  function toggleCollapse(nodeId) {
+    const node = findNode(tree.value, nodeId)
+    if (node) {
+      node.collapsed = !node.collapsed
+      save()
+    }
+  }
+
+  function updateNodeColor(nodeId, color) {
+    const node = findNode(tree.value, nodeId)
+    if (node) {
+      node.color = color
+      save()
+    }
+  }
+
+  function updateNodeName(nodeId, name) {
+    const node = findNode(tree.value, nodeId)
+    if (node) {
+      node.name = name
+      save()
+    }
+  }
+
+  function addChild(parentId) {
+    const parent = findNode(tree.value, parentId)
+    if (parent) {
+      if (!parent.children) parent.children = []
+      parent.children.push({
+        id: generateId(),
+        name: 'New Node',
+        color: parent.color,
+        collapsed: false,
+        children: []
+      })
+      parent.collapsed = false
+      save()
+    }
+  }
+
+  function deleteNode(nodeId) {
+    if (nodeId === 'root') return
+    const parent = findParent(tree.value, nodeId)
+    if (parent) {
+      parent.children = parent.children.filter(c => c.id !== nodeId)
+      save()
+    }
+  }
+
+  function resetTree() {
+    tree.value = JSON.parse(JSON.stringify(DEFAULT_TREE))
+    save()
+  }
+
+  function exportJSON() {
+    const data = {
+      version: '1.0',
+      name: 'Tree Diagram Export',
+      createdAt: new Date().toISOString(),
+      tree: JSON.parse(JSON.stringify(tree.value))
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `tree-diagram-${Date.now()}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  function importJSON(jsonData) {
+    try {
+      const data = typeof jsonData === 'string' ? JSON.parse(jsonData) : jsonData
+      if (data.tree) {
+        tree.value = data.tree
+      } else if (data.id) {
+        tree.value = data
+      } else {
+        throw new Error('Invalid format')
+      }
+      save()
+      return { ok: true }
+    } catch (e) {
+      return { ok: false, error: e.message }
+    }
+  }
+
+  return { tree, toggleCollapse, updateNodeColor, updateNodeName, addChild, deleteNode, resetTree, exportJSON, importJSON }
+})
