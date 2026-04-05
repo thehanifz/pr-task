@@ -14,9 +14,8 @@
         <div class="detail-badges">
           <span :class="['badge', STATUS_BADGE[task.status]]">{{ STATUS_LABELS[task.status] }}</span>
           <span :class="['badge', CAT_BADGE[task.cat] || 'cat-other']">{{ CAT_LABELS[task.cat] || task.cat }}</span>
-          <span class="badge" style="background:var(--surface2);color:var(--text2)">
-            <span :class="['dot', PRIORITY_DOT[task.priority]]" style="margin-right:4px" />
-            {{ PRIORITY_LABELS[task.priority] }}
+          <span :class="['priority-pill', `priority-${task.priority}`]">
+            {{ PSHORT[task.priority] }} · {{ PRIORITY_LABELS[task.priority] }}
           </span>
         </div>
       </div>
@@ -31,17 +30,11 @@
 
     <!-- Info card -->
     <div class="card" style="margin-bottom:14px">
-      <p v-if="task.desc" style="color:var(--text2);font-size:0.85rem;line-height:1.7;margin-bottom:14px">{{ task.desc }}</p>
+      <p v-if="task.desc" style="color:var(--text2);font-size:0.85rem;line-height:1.7;margin-bottom:14px">
+        {{ task.desc }}
+      </p>
 
-      <!-- Big progress -->
-      <div class="big-progress">
-        <div class="big-pct mono">{{ task.progress }}%</div>
-        <div class="progress-bar" style="height:10px;margin-top:8px">
-          <div :class="['progress-fill', progressFillClass(task.progress)]" :style="{ width: task.progress + '%' }" />
-        </div>
-      </div>
-
-      <!-- Info grid -->
+      <!-- Info grid: tanggal + durasi -->
       <div class="info-grid">
         <div v-if="task.start" class="info-item">
           <div class="info-label">Tanggal Mulai</div>
@@ -49,11 +42,20 @@
         </div>
         <div v-if="task.target" class="info-item">
           <div class="info-label">Target Selesai</div>
-          <div class="info-val">🎯 {{ task.target }}</div>
+          <div class="info-val" :style="{ color: deadlineColor }">
+            🎯 {{ task.target }}
+            <span v-if="diff !== null" class="deadline-sub">
+              {{ diff < 0 ? `Lewat ${Math.abs(diff)} hari` : diff === 0 ? 'Hari ini!' : `H-${diff}` }}
+            </span>
+          </div>
         </div>
         <div v-if="task.doneDate" class="info-item">
           <div class="info-label">Tanggal Selesai</div>
-          <div class="info-val">✅ {{ task.doneDate }}</div>
+          <div class="info-val" style="color:var(--green)">✅ {{ task.doneDate }}</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Durasi Aktif</div>
+          <div class="info-val">⏱️ {{ durationText }}</div>
         </div>
         <div class="info-item">
           <div class="info-label">Log Entries</div>
@@ -73,22 +75,19 @@
       <div v-else class="log-list">
         <div v-for="l in taskLogs" :key="l.id" class="log-entry">
           <div class="log-top">
-            <span class="mono" style="font-size:0.68rem;color:var(--muted)">📅 {{ l.date }}</span>
-            <div style="display:flex;align-items:center;gap:8px">
-              <span class="badge" style="background:var(--accent-glow);color:var(--accent)">{{ l.progress }}%</span>
-              <button class="icon-btn danger btn-sm" style="width:24px;height:24px;font-size:0.7rem" @click="askDeleteLog(l)" title="Hapus log">✕</button>
-            </div>
+            <span class="log-date mono">📅 {{ l.date }}</span>
+            <button class="icon-btn danger" style="width:24px;height:24px;font-size:0.7rem" @click="askDeleteLog(l)" title="Hapus log">✕</button>
           </div>
-          <div style="font-size:0.83rem;color:var(--text2);line-height:1.6;margin-top:4px">{{ l.note }}</div>
+          <div v-if="l.note" style="font-size:0.83rem;color:var(--text2);line-height:1.6;margin-top:6px">{{ l.note }}</div>
         </div>
       </div>
     </div>
 
     <!-- Modals -->
-    <TaskFormModal v-model="showEditForm" :task="editTask" @saved="reload" />
-    <LogFormModal  v-model="showLogForm" :task-id="task.id" :initial-progress="task.progress" @saved="reload" />
-    <ReminderFormModal v-model="showReminderForm" :fixed-task-id="props.id" @saved="reload" />
-    <ConfirmModal v-model="showDeleteLog" item-name="log ini" @confirm="doDeleteLog" />
+    <TaskFormModal    v-model="showEditForm"     :task="editTask"              @saved="reload" />
+    <LogFormModal     v-model="showLogForm"      :task-id="task.id"            @saved="reload" />
+    <ReminderFormModal v-model="showReminderForm" :fixed-task-id="props.id"   @saved="reload" />
+    <ConfirmModal     v-model="showDeleteLog"    item-name="log ini"           @confirm="doDeleteLog" />
   </div>
 </template>
 
@@ -100,13 +99,15 @@ import { useToast } from '@/composables/useToast'
 import {
   STATUS_LABELS, STATUS_BADGE,
   CAT_LABELS, CAT_BADGE,
-  PRIORITY_LABELS, PRIORITY_DOT,
-  progressFillClass
+  PRIORITY_LABELS,
+  deadlineDiff
 } from '@/composables/useTaskHelpers'
-import TaskFormModal    from '@/components/TaskFormModal.vue'
+import TaskFormModal     from '@/components/TaskFormModal.vue'
 import LogFormModal      from '@/components/LogFormModal.vue'
 import ConfirmModal      from '@/components/ConfirmModal.vue'
 import ReminderFormModal from '@/components/ReminderFormModal.vue'
+
+const PSHORT = { high: 'H', med: 'M', low: 'L' }
 
 const props  = defineProps({ id: String })
 const store  = useTasksStore()
@@ -123,6 +124,28 @@ const deleteLogTarget  = ref(null)
 const task     = computed(() => store.getTaskById(props.id))
 const taskLogs = computed(() => store.getLogsByTask(props.id))
 
+const diff = computed(() => task.value ? deadlineDiff(task.value.target) : null)
+
+const deadlineColor = computed(() => {
+  const d = diff.value
+  if (d === null) return ''
+  if (d <= 0)  return 'var(--red)'
+  if (d <= 3)  return 'var(--yellow)'
+  return 'var(--text)'
+})
+
+const durationText = computed(() => {
+  if (!task.value?.start) return '—'
+  const start = new Date(task.value.start)
+  const end   = task.value.doneDate ? new Date(task.value.doneDate) : new Date()
+  const days  = Math.ceil((end - start) / 86_400_000)
+  if (days < 0)  return '—'
+  if (days === 0) return 'Hari ini'
+  if (days < 7)  return `${days} hari`
+  if (days < 30) return `${Math.floor(days / 7)} minggu`
+  return `${Math.floor(days / 30)} bulan`
+})
+
 function openEdit() { editTask.value = { ...task.value }; showEditForm.value = true }
 function askDeleteLog(l) { deleteLogTarget.value = l; showDeleteLog.value = true }
 async function doDeleteLog() {
@@ -136,42 +159,72 @@ async function doDeleteLog() {
 }
 async function reload() { await store.loadAll() }
 
-onMounted(() => {
-  if (!store.tasks.length) store.loadAll()
-})
+onMounted(() => { if (!store.tasks.length) store.loadAll() })
 </script>
 
 <style scoped>
-/* Header: back button + title stack */
 .detail-header {
   display: flex; align-items: flex-start; gap: 12px;
   margin-bottom: 12px;
 }
 .back-btn { flex-shrink: 0; margin-top: 4px; }
 .detail-title-wrap { flex: 1; min-width: 0; }
-.detail-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+.detail-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
 
-/* Action bar: tombol terpisah di bawah judul */
 .detail-actions {
   display: flex; gap: 8px; flex-wrap: wrap;
   margin-bottom: 18px;
-  padding-left: 0;
 }
 
-.badge-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
-.big-progress { margin: 18px 0; }
-.big-pct { font-size: 2.2rem; font-weight: 800; color: var(--accent); line-height: 1; }
-.info-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 10px; margin-top: 16px; }
-.info-item { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 11px 14px; }
-.info-label { font-size: 0.63rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; font-family: var(--font-mono); margin-bottom: 3px; }
-.info-val { font-size: 0.86rem; font-weight: 700; }
+/* Priority pill — konsisten dengan TaskCard */
+.priority-pill {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px; border-radius: 99px;
+  font-size: 0.68rem; font-weight: 800;
+  letter-spacing: 0.03em;
+}
+.priority-high { background: rgba(239,68,68,0.15); color: var(--red); }
+.priority-med  { background: rgba(245,158,11,0.15); color: var(--yellow); }
+.priority-low  { background: rgba(107,114,128,0.15); color: var(--muted); }
+
+/* Info grid */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+.info-item {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 11px 14px;
+}
+.info-label {
+  font-size: 0.63rem; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.08em;
+  font-family: var(--font-mono); margin-bottom: 4px;
+}
+.info-val { font-size: 0.86rem; font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.deadline-sub {
+  font-size: 0.7rem; font-weight: 600;
+  background: rgba(239,68,68,0.1);
+  padding: 1px 6px; border-radius: 99px;
+}
+
+/* Log list */
 .log-list { display: flex; flex-direction: column; gap: 10px; }
-.log-entry { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 15px; }
-.log-top { display: flex; justify-content: space-between; align-items: center; }
+.log-entry {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 13px 15px;
+}
+.log-top {
+  display: flex; justify-content: space-between;
+  align-items: center;
+}
+.log-date { font-size: 0.68rem; color: var(--muted); }
 .no-log { text-align: center; color: var(--muted); font-size: 0.82rem; padding: 28px; }
 
 @media (max-width: 600px) {
   .detail-actions { gap: 6px; }
   .detail-actions .btn { flex: 1; justify-content: center; }
+  .info-grid { grid-template-columns: 1fr 1fr; }
 }
 </style>
