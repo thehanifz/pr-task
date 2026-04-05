@@ -32,9 +32,9 @@
       <div v-else class="form-hint" style="margin-bottom:12px">Belum ada akun Google yang terhubung.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
         <button class="btn btn-secondary" @click="reloginGoogle">🔄 Ganti Akun Google</button>
-        <button v-if="googleAccount" class="btn btn-danger" @click="logoutGoogle">🚪 Logout Google</button>
+        <button v-if="googleAccount" class="btn btn-danger" @click="logoutGoogle">🚪 Logout</button>
       </div>
-      <div class="form-hint" style="margin-top:8px">Token OAuth diperbarui otomatis. Logout hanya menghapus token lokal.</div>
+      <div class="form-hint" style="margin-top:8px">Token OAuth diperbarui otomatis. Logout akan mengarahkan ke halaman login.</div>
     </div>
 
     <!-- Google Sheets -->
@@ -118,13 +118,13 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useAuthStore } from '@/stores/auth'
-import { useTasksStore } from '@/stores/tasks'
-import { useToast } from '@/composables/useToast'
-import { useRouter } from 'vue-router'
+import { useAuthStore }   from '@/stores/auth'
+import { useTasksStore }  from '@/stores/tasks'
+import { useToast }       from '@/composables/useToast'
+import { useRouter }      from 'vue-router'
 import { testConnection } from '@/services/googleSheets'
-import { testWebhook } from '@/services/webhook'
-import { getStoredToken, oauthLogout, initiateGoogleLogin, extractSheetId } from '@/services/googleOAuth'
+import { testWebhook }    from '@/services/webhook'
+import { getStoredToken, initiateGoogleLogin, extractSheetId } from '@/services/googleOAuth'
 
 const auth   = useAuthStore()
 const store  = useTasksStore()
@@ -226,10 +226,9 @@ async function reloginGoogle() {
 }
 
 function logoutGoogle() {
-  if (!confirm('Logout dari akun Google? Kamu perlu login ulang untuk mengakses Sheets.')) return
-  oauthLogout()
-  googleAccount.value = null
-  toast.success('Logout Google berhasil')
+  if (!confirm('Logout? Kamu perlu login Google lagi untuk mengakses aplikasi.')) return
+  auth.logout()           // hapus token + clear session
+  router.push('/login')  // redirect ke halaman login
 }
 
 function exportConfig() {
@@ -263,7 +262,7 @@ function importConfig(e) {
         sheetId:    cfg.sheetId,
         webhookUrl: cfg.webhookUrl || ''
       })
-      toast.success('Config berhasil di-import! Silakan login ulang Google jika diperlukan.')
+      toast.success('Config berhasil di-import!')
       profileForm.value.name   = cfg.name || ''
       sheetsForm.value.sheetId = cfg.sheetId || ''
       webhookForm.value.url    = cfg.webhookUrl || ''
@@ -277,9 +276,8 @@ function importConfig(e) {
 
 function resetApp() {
   if (!confirm('Reset semua data lokal? (Data Google Sheets tidak terhapus)')) return
-  oauthLogout()
   auth.resetConfig()
-  router.push('/setup')
+  router.push('/login')
 }
 </script>
 

@@ -15,7 +15,7 @@
 
 import { defineStore }  from 'pinia'
 import { ref, computed } from 'vue'
-import { getStoredToken, getAccessToken } from '@/services/googleOAuth'
+import { getStoredToken, getAccessToken, clearToken } from '@/services/googleOAuth'
 
 const LS_KEY     = 'prtm_config'
 const LS_LOCKOUT = 'prtm_lockout'
@@ -94,7 +94,7 @@ export const useAuthStore = defineStore('auth', () => {
     config.value = newCfg
     persistConfig(newCfg)
 
-    // Push ke server (termasuk pinHash)
+    // Selalu push ke server jika sudah OAuth login
     await pushConfigToServer(newCfg).catch(e =>
       console.warn('[auth] Gagal sync ke server:', e.message)
     )
@@ -104,26 +104,36 @@ export const useAuthStore = defineStore('auth', () => {
     const hash = await sha256(newPin)
     config.value.pinHash = hash
     persistConfig(config.value)
-    // Sync pinHash baru ke server
     await pushConfigToServer(config.value).catch(e =>
       console.warn('[auth] Gagal sync pinHash ke server:', e.message)
     )
+  }
+
+  /**
+   * Logout penuh:
+   * - Hapus OAuth token
+   * - Hapus config lokal (optional: bisa dipertahankan)
+   * - Clear session unlock
+   * - Return true agar caller bisa redirect ke /login
+   */
+  function logout() {
+    clearToken()                        // hapus prtm_oauth_token
+    isUnlocked.value = false
+    sessionStorage.removeItem(SS_KEY)  // hapus session unlock
+    // config & pinHash tetap di localStorage agar saat login lagi tidak perlu setup ulang
+    // (pinHash akan di-verify ulang setelah OAuth)
   }
 
   function resetConfig() {
     localStorage.removeItem(LS_KEY)
     localStorage.removeItem(LS_LOCKOUT)
     sessionStorage.removeItem(SS_KEY)
+    clearToken()
     config.value     = {}
     isUnlocked.value = false
   }
 
   // ── Pull dari server → localStorage ──
-  /**
-   * Dipanggil setelah OAuth login berhasil.
-   * Server menang untuk: sheetId, webhook, pinHash
-   * localStorage dipertahankan sebagai fallback
-   */
   async function pullConfigFromServer() {
     const token = getStoredToken()
     if (!token?.email) return { pulled: false, reason: 'no_oauth' }
@@ -140,26 +150,20 @@ export const useAuthStore = defineStore('auth', () => {
         return { pulled: false, reason: 'not_found' }
       }
 
-      // Merge: server menang untuk semua field config
+      // Server menang untuk semua field
       const merged = {
         ...config.value,
         sheetId:    data.sheetId  || config.value?.sheetId    || '',
         webhookUrl: data.webhook  || config.value?.webhookUrl || '',
-        pinHash:    data.pinHash  || config.value?.pinHash    || '',  // ✅ restore PIN hash
+        pinHash:    data.pinHash  || config.value?.pinHash    || '',
         name:       data.name     || config.value?.name       || token.name || 'User'
       }
 
       config.value = merged
       persistConfig(merged)
 
-      // Jika pinHash sudah ada, user tidak perlu setup ulang
-      if (merged.pinHash) {
-        syncing.value = false
-        return { pulled: true, hasPin: true }
-      }
-
       syncing.value = false
-      return { pulled: true, hasPin: false }
+      return { pulled: true, hasPin: !!merged.pinHash }
     } catch (e) {
       syncError.value = e.message
       syncing.value   = false
@@ -180,12 +184,13 @@ export const useAuthStore = defineStore('auth', () => {
       email:   token.email,
       sheetId: current?.sheetId    || '',
       webhook: current?.webhookUrl || '',
-      pinHash: current?.pinHash    || '',  // ✅ ikut di-push
+      pinHash: current?.pinHash    || '',
       name:    current?.name       || ''
     }
 
-    // Minimal ada satu field yang terisi
-    if (!body.sheetId && !body.webhook && !body.pinHash) return
+    // ✅ Selalu push selama ada email — tidak ada skip condition lagi
+    // (setidaknya name akan tersimpan)
+    if (!body.email) return
 
     const res = await fetch('/api/user/save', {
       method:  'POST',
@@ -203,7 +208,7 @@ export const useAuthStore = defineStore('auth', () => {
     config, isUnlocked, isConfigured, syncing, syncError,
     sheetId, webhookUrl, userName, isOAuthLogin,
     getLockoutRemaining,
-    verifyPin, lock, saveConfig, changePin, resetConfig,
+    verifyPin, lock, logout, saveConfig, changePin, resetConfig,
     pullConfigFromServer, pushConfigToServer
   }
 })
