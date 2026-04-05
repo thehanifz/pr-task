@@ -10,8 +10,8 @@
  */
 
 const CONFIG = {
-  SPREADSHEET_ID: 'sheet -id 1o10C-k0JRS4',
-  DEFAULT_WEBHOOK: 'https://webhook',
+  SPREADSHEET_ID: 'gsheet_ID',
+  DEFAULT_WEBHOOK: 'default_webhook',
   SHEET_TASKS:     'tasks',
   SHEET_REMINDERS: 'reminders',
 
