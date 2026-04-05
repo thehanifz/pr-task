@@ -1,7 +1,7 @@
 /**
  * googleOAuth.js
  * Handle Google OAuth 2.0 PKCE flow untuk akses Sheets API
- * Tidak butuh client_secret — aman untuk SPA / public app
+ * Support: Desktop App client type (butuh client_secret)
  */
 
 const SCOPES = [
@@ -26,7 +26,7 @@ async function generateCodeVerifier() {
 }
 
 async function generateCodeChallenge(verifier) {
-  const data = new TextEncoder().encode(verifier)
+  const data   = new TextEncoder().encode(verifier)
   const digest = await crypto.subtle.digest('SHA-256', data)
   return base64urlEncode(digest)
 }
@@ -53,22 +53,24 @@ export function isTokenValid(token) {
 
 // ── Refresh access token via refresh_token ───
 export async function refreshAccessToken(refreshToken) {
-  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
+  const clientId     = import.meta.env.VITE_GOOGLE_CLIENT_ID
+  const clientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET || ''
+
+  const body = new URLSearchParams({
+    client_id:     clientId,
+    grant_type:    'refresh_token',
+    refresh_token: refreshToken
+  })
+  if (clientSecret) body.set('client_secret', clientSecret)
+
+  const res  = await fetch('https://oauth2.googleapis.com/token', {
+    method:  'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id:     clientId,
-      grant_type:    'refresh_token',
-      refresh_token: refreshToken
-    })
+    body
   })
   const data = await res.json()
   if (!data.access_token) throw new Error(data.error_description || 'Gagal refresh token')
-  return {
-    ...data,
-    expires_at: Date.now() + data.expires_in * 1000
-  }
+  return { ...data, expires_at: Date.now() + data.expires_in * 1000 }
 }
 
 // ── Get valid access token (auto-refresh) ─────
@@ -85,11 +87,7 @@ export async function getAccessToken() {
 
   try {
     const refreshed = await refreshAccessToken(token.refresh_token)
-    const updated = {
-      ...token,
-      access_token: refreshed.access_token,
-      expires_at:   refreshed.expires_at
-    }
+    const updated   = { ...token, access_token: refreshed.access_token, expires_at: refreshed.expires_at }
     storeToken(updated)
     return updated.access_token
   } catch {
@@ -104,19 +102,18 @@ export async function fetchUserInfo(accessToken) {
     headers: { Authorization: `Bearer ${accessToken}` }
   })
   if (!res.ok) throw new Error('Gagal mengambil info akun Google')
-  return res.json() // { id, email, name, picture }
+  return res.json()
 }
 
-// ── Mulai OAuth login (buka popup) ────────────
+// ── Mulai OAuth login ─────────────────────────
 export async function initiateGoogleLogin() {
   const clientId    = import.meta.env.VITE_GOOGLE_CLIENT_ID
-  const redirectUri = window.location.origin + '/oauth/callback'
+  const redirectUri = `${window.location.origin}/oauth/callback`
 
-  const verifier   = await generateCodeVerifier()
-  const challenge  = await generateCodeChallenge(verifier)
-  const state      = base64urlEncode(crypto.getRandomValues(new Uint8Array(16)))
+  const verifier  = await generateCodeVerifier()
+  const challenge = await generateCodeChallenge(verifier)
+  const state     = base64urlEncode(crypto.getRandomValues(new Uint8Array(16)))
 
-  // Simpan verifier + state sementara
   sessionStorage.setItem('pkce_verifier', verifier)
   sessionStorage.setItem('pkce_state',    state)
 
@@ -142,21 +139,24 @@ export async function handleOAuthCallback(code, state) {
 
   if (state !== storedState) throw new Error('State tidak cocok. Kemungkinan CSRF.')
 
-  const clientId    = import.meta.env.VITE_GOOGLE_CLIENT_ID
-  const redirectUri = window.location.origin + '/oauth/callback'
+  const clientId     = import.meta.env.VITE_GOOGLE_CLIENT_ID
+  const clientSecret = import.meta.env.VITE_GOOGLE_CLIENT_SECRET || ''
+  const redirectUri  = `${window.location.origin}/oauth/callback`
 
-  const res = await fetch('https://oauth2.googleapis.com/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id:     clientId,
-      code,
-      code_verifier: verifier,
-      grant_type:    'authorization_code',
-      redirect_uri:  redirectUri
-    })
+  const body = new URLSearchParams({
+    client_id:     clientId,
+    code,
+    code_verifier: verifier,
+    grant_type:    'authorization_code',
+    redirect_uri:  redirectUri
   })
+  if (clientSecret) body.set('client_secret', clientSecret)
 
+  const res  = await fetch('https://oauth2.googleapis.com/token', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  })
   const data = await res.json()
   if (!data.access_token) throw new Error(data.error_description || 'Gagal mendapatkan token')
 
@@ -166,15 +166,12 @@ export async function handleOAuthCallback(code, state) {
     expires_at:    Date.now() + data.expires_in * 1000
   }
 
-  // Ambil info user
   const userInfo = await fetchUserInfo(token.access_token)
-  token.email    = userInfo.email
-  token.name     = userInfo.name
-  token.picture  = userInfo.picture
+  token.email   = userInfo.email
+  token.name    = userInfo.name
+  token.picture = userInfo.picture
 
   storeToken(token)
-
-  // Bersihkan session
   sessionStorage.removeItem('pkce_verifier')
   sessionStorage.removeItem('pkce_state')
 
