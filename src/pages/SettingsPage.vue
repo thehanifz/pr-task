@@ -19,7 +19,7 @@
       </button>
     </div>
 
-    <!-- Akun Google -->
+    <!-- Akun Google (info only, tanpa tombol ganti akun) -->
     <div class="card settings-section">
       <div class="section-title">Akun Google</div>
       <div v-if="googleAccount" class="google-account-info">
@@ -30,11 +30,7 @@
         </div>
       </div>
       <div v-else class="form-hint" style="margin-bottom:12px">Belum ada akun Google yang terhubung.</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-        <button class="btn btn-secondary" @click="reloginGoogle">🔄 Ganti Akun Google</button>
-        <button v-if="googleAccount" class="btn btn-danger" @click="logoutGoogle">🚪 Logout</button>
-      </div>
-      <div class="form-hint" style="margin-top:8px">Token OAuth diperbarui otomatis. Logout akan mengarahkan ke halaman login.</div>
+      <div class="form-hint" style="margin-top:8px">Token OAuth diperbarui otomatis.</div>
     </div>
 
     <!-- Google Sheets -->
@@ -44,7 +40,7 @@
         <label class="form-label">Spreadsheet ID atau URL</label>
         <input v-model="sheetsForm.sheetId" class="form-input" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" @blur="parseSheetId" />
         <div v-if="parsedId" class="form-hint" style="color:var(--green)">✅ ID: <code>{{ parsedId }}</code></div>
-        <div class="form-hint">Pastikan spreadsheet di-share atau merupakan milik akun Google kamu.</div>
+        <div class="form-hint">Pastikan spreadsheet di-share atau milik akun Google kamu.</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn btn-primary" :disabled="savingSheets" @click="saveSheets">
@@ -86,32 +82,16 @@
         <input v-model="pinForm.confirm" type="password" inputmode="numeric" maxlength="4" class="form-input" placeholder="Ulangi PIN baru" />
       </div>
       <button class="btn btn-primary" @click="savePin">🔐 Ubah PIN</button>
-      <div class="form-hint" style="margin-top:8px">Setelah 3x PIN salah, aplikasi akan terkunci selama 15 menit.</div>
+      <div class="form-hint" style="margin-top:8px">Setelah 3x PIN salah, aplikasi terkunci 15 menit.</div>
     </div>
 
-    <!-- Transfer Config -->
-    <div class="card settings-section" style="border-color:rgba(59,130,246,0.2)">
-      <div class="section-title">Transfer ke Device Lain</div>
-      <p style="font-size:0.82rem;color:var(--text2);margin-bottom:16px;line-height:1.6">
-        Export konfigurasi (Sheet ID, Webhook URL, Nama) ke file JSON.
-        Di device baru, upload file ini saat Setup. Login Google &amp; set PIN baru tetap diperlukan.
+    <!-- Logout — paling bawah -->
+    <div class="card settings-section" style="border-color:rgba(239,68,68,0.2)">
+      <div class="section-title" style="color:var(--red)">Sesi</div>
+      <p style="font-size:0.82rem;color:var(--text2);margin-bottom:14px;line-height:1.6">
+        Logout akan menghapus sesi dan mengarahkan ke halaman login.
       </p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="btn btn-primary" @click="exportConfig">📤 Export Config</button>
-        <div>
-          <button class="btn btn-secondary" @click="importConfigInput.click()">📥 Import Config</button>
-          <input ref="importConfigInput" type="file" accept=".json" style="display:none" @change="importConfig" />
-        </div>
-      </div>
-    </div>
-
-    <!-- Danger Zone -->
-    <div class="card settings-section" style="border-color:rgba(239,68,68,0.3)">
-      <div class="section-title" style="color:var(--red)">Danger Zone</div>
-      <p style="font-size:0.82rem;color:var(--text2);margin-bottom:16px;line-height:1.6">
-        Reset semua konfigurasi dan data lokal. Data di Google Sheets <strong>tidak akan terhapus</strong>.
-      </p>
-      <button class="btn btn-danger" @click="resetApp">🗑️ Reset Aplikasi</button>
+      <button class="btn btn-danger" @click="logoutGoogle">🚪 Logout</button>
     </div>
   </div>
 </template>
@@ -124,7 +104,7 @@ import { useToast }       from '@/composables/useToast'
 import { useRouter }      from 'vue-router'
 import { testConnection } from '@/services/googleSheets'
 import { testWebhook }    from '@/services/webhook'
-import { getStoredToken, initiateGoogleLogin, extractSheetId } from '@/services/googleOAuth'
+import { getStoredToken, extractSheetId } from '@/services/googleOAuth'
 
 const auth   = useAuthStore()
 const store  = useTasksStore()
@@ -136,7 +116,6 @@ const sheetsForm  = ref({ sheetId: auth.sheetId })
 const webhookForm = ref({ url: auth.webhookUrl })
 const pinForm     = ref({ pin: '', confirm: '' })
 const parsedId    = ref('')
-const importConfigInput = ref(null)
 
 const googleAccount  = ref(null)
 const savingProfile  = ref(false)
@@ -218,65 +197,9 @@ async function savePin() {
   toast.success('PIN berhasil diubah ✅')
 }
 
-async function reloginGoogle() {
-  try {
-    const url = await initiateGoogleLogin()
-    window.location.href = url
-  } catch(e) { toast.error('Gagal memulai login Google: ' + e.message) }
-}
-
 function logoutGoogle() {
   if (!confirm('Logout? Kamu perlu login Google lagi untuk mengakses aplikasi.')) return
-  auth.logout()           // hapus token + clear session
-  router.push('/login')  // redirect ke halaman login
-}
-
-function exportConfig() {
-  const cfg = {
-    name:       auth.userName,
-    sheetId:    auth.sheetId,
-    webhookUrl: auth.webhookUrl,
-    exportedAt: new Date().toISOString(),
-    version:    '2.0'
-  }
-  const blob = new Blob([JSON.stringify(cfg, null, 2)], { type: 'application/json' })
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = 'prtm-config.json'
-  a.click()
-  URL.revokeObjectURL(url)
-  toast.success('Config berhasil di-export 📤')
-}
-
-function importConfig(e) {
-  const file = e.target.files[0]
-  if (!file) return
-  const reader = new FileReader()
-  reader.onload = async (ev) => {
-    try {
-      const cfg = JSON.parse(ev.target.result)
-      if (!cfg.sheetId) return toast.error('File config tidak valid atau tidak lengkap')
-      await auth.saveConfig({
-        name:       cfg.name,
-        sheetId:    cfg.sheetId,
-        webhookUrl: cfg.webhookUrl || ''
-      })
-      toast.success('Config berhasil di-import!')
-      profileForm.value.name   = cfg.name || ''
-      sheetsForm.value.sheetId = cfg.sheetId || ''
-      webhookForm.value.url    = cfg.webhookUrl || ''
-    } catch {
-      toast.error('Gagal membaca file config')
-    }
-  }
-  reader.readAsText(file)
-  e.target.value = ''
-}
-
-function resetApp() {
-  if (!confirm('Reset semua data lokal? (Data Google Sheets tidak terhapus)')) return
-  auth.resetConfig()
+  auth.logout()
   router.push('/login')
 }
 </script>

@@ -34,11 +34,6 @@
         <router-link to="/tree" class="nav-item" @click="sidebarOpen = false">
           <span>🌳</span> Tree Diagram
         </router-link>
-
-        <div class="nav-section">Lainnya</div>
-        <router-link to="/settings" class="nav-item" @click="sidebarOpen = false">
-          <span>⚙️</span> Pengaturan
-        </router-link>
       </nav>
 
       <!-- Status chips -->
@@ -65,17 +60,24 @@
         </div>
       </div>
 
+      <!-- Sidebar Bottom -->
       <div class="sidebar-bottom">
-        <div class="user-chip">
-          <div class="user-avatar">{{ auth.userName[0]?.toUpperCase() }}</div>
-          <div style="min-width:0">
-            <div class="user-name truncate">{{ auth.userName }}</div>
-            <div :class="['conn-status', `conn-${store.connStatus}`]">
-              <span v-if="store.connStatus === 'loading'" class="pulse-dot" />
-              {{ store.connMsg || '—' }}
+        <!-- User row: nama + gear settings -->
+        <div class="user-row">
+          <div class="user-chip">
+            <div class="user-avatar">{{ auth.userName[0]?.toUpperCase() }}</div>
+            <div style="min-width:0">
+              <div class="user-name truncate">{{ auth.userName }}</div>
+              <div :class="['conn-status', `conn-${store.connStatus}`]">
+                <span v-if="store.connStatus === 'loading'" class="pulse-dot" />
+                {{ store.connMsg || '—' }}
+              </div>
             </div>
           </div>
+          <router-link to="/settings" class="gear-btn" title="Pengaturan" @click="sidebarOpen = false">⚙️</router-link>
         </div>
+
+        <!-- Action buttons -->
         <button class="lock-btn" @click="lockApp">🔒 Kunci Aplikasi</button>
       </div>
     </aside>
@@ -161,8 +163,18 @@ function lockApp() { auth.lock(); router.push('/lock') }
 .status-chip--orange{ color: var(--yellow); }
 .status-chip--muted { color: var(--text2); }
 
+/* Sidebar bottom */
 .sidebar-bottom { padding: 10px 8px 14px; border-top: 1px solid var(--border); }
-.user-chip { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }
+
+.user-row {
+  display: flex; align-items: center;
+  padding: 6px 4px 4px;
+  gap: 4px;
+}
+.user-chip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 8px; flex: 1; min-width: 0;
+}
 .user-avatar {
   width: 30px; height: 30px; border-radius: 50%;
   background: linear-gradient(135deg, var(--accent), var(--purple));
@@ -170,6 +182,16 @@ function lockApp() { auth.lock(); router.push('/lock') }
   font-size: 0.78rem; font-weight: 800; color: #fff; flex-shrink: 0;
 }
 .user-name { font-size: 0.8rem; font-weight: 700; }
+
+.gear-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: var(--radius);
+  font-size: 1rem; text-decoration: none;
+  color: var(--text2); transition: all 0.15s; flex-shrink: 0;
+}
+.gear-btn:hover { background: var(--surface); color: var(--text); }
+.gear-btn.router-link-active { background: var(--accent-glow); color: var(--accent); }
+
 .lock-btn {
   display: flex; align-items: center; gap: 8px; width: 100%;
   padding: 7px 10px; border-radius: var(--radius);
