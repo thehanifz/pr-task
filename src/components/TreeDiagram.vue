@@ -110,11 +110,9 @@ let longPressTimer = null
 const LONG_PRESS_MS = 500
 
 function startLongPress(event, d) {
-  // Batalkan timer sebelumnya
   cancelLongPress()
   longPressTimer = setTimeout(() => {
     longPressTimer = null
-    // Ambil posisi dari touch
     const touch = event.touches ? event.touches[0] : event
     openPopupAt(touch.clientX, touch.clientY, d)
   }, LONG_PRESS_MS)
@@ -127,21 +125,25 @@ function cancelLongPress() {
   }
 }
 
-function wasLongPress() {
-  // Jika timer sudah di-clear oleh longpress, return true
-  return longPressTimer === null
-}
-
 function openPopupAt(clientX, clientY, d) {
-  const rect = wrapRef.value.getBoundingClientRect()
+  const rect     = wrapRef.value.getBoundingClientRect()
+  const isTouch  = window.matchMedia('(hover: none)').matches
+  // popup dimensions (estimasi, tergantung media query)
+  const popupW   = isTouch ? 210 : 230
+  const popupH   = isTouch ? 250 : 280
+
   let x = clientX - rect.left
   let y = clientY - rect.top
-  const popupW = 230
-  const popupH = 280
+
+  // Di mobile, geser popup sedikit ke atas agar tidak nutupin titik sentuh
+  if (isTouch) y -= 24
+
+  // Clamp agar tidak keluar batas
   if (x + popupW > rect.width)  x = rect.width  - popupW - 8
   if (y + popupH > rect.height) y = rect.height - popupH - 8
   if (x < 8) x = 8
   if (y < 8) y = 8
+
   popup.show     = true
   popup.nodeId   = d.data.id
   popup.nameVal  = d.data.name
@@ -271,7 +273,6 @@ function render() {
   const addBtn = nodeG.append('g')
     .attr('class', 'add-btn')
     .attr('transform', `translate(${NODE_W / 2 + 18}, 0)`)
-    // Touch: selalu tampil; Mouse: tampil saat hover
     .style('opacity', isTouch ? 1 : 0)
 
   addBtn.append('circle')
@@ -293,7 +294,6 @@ function render() {
     store.addChild(d.data.id)
   })
 
-  // Touch tap on add btn
   addBtn.on('touchend', (event, d) => {
     event.preventDefault()
     event.stopPropagation()
@@ -366,14 +366,12 @@ function render() {
   // ── Touch: long-press = buka popup, tap = collapse ──
   nodeG
     .on('touchstart', (event, d) => {
-      // Jangan trigger jika ada add/del button yang di-tap
       if (event.target.closest('.add-btn') || event.target.closest('.del-btn')) return
       startLongPress(event, d)
     })
     .on('touchend', (event, d) => {
       const wasLP = longPressTimer === null && !popup.show
       cancelLongPress()
-      // Jika bukan long press dan popup belum terbuka → toggle collapse
       if (!wasLP && !popup.show) {
         if (d.data._children && d.data._children.length > 0) {
           event.preventDefault()
@@ -382,7 +380,6 @@ function render() {
       }
     })
     .on('touchmove', () => {
-      // Batalkan long press jika user mulai scroll/drag
       cancelLongPress()
     })
 }
@@ -415,7 +412,6 @@ onMounted(() => {
   render()
   nextTick(() => fitView())
 
-  // Tutup popup saat klik/tap di luar
   const handleOutsideClick = (e) => {
     if (!e.target.closest('.node-popup') && !e.target.closest('.node')) {
       closePopup()
@@ -468,7 +464,7 @@ watch(() => JSON.stringify(store.tree), () => {
   backdrop-filter: blur(4px);
 }
 
-/* ── Node Popup ───────────────────────────── */
+/* ── Node Popup (default / desktop) ───────── */
 .node-popup {
   position: absolute;
   z-index: 200;
@@ -484,6 +480,30 @@ watch(() => JSON.stringify(store.tree), () => {
   from { opacity: 0; transform: scale(0.94) translateY(-4px); }
   to   { opacity: 1; transform: none; }
 }
+
+/* ── Popup compact di mobile ───────────────── */
+@media (max-width: 480px) {
+  .node-popup {
+    width: min(90vw, 210px);
+    min-width: 0;
+    max-width: calc(100vw - 20px);
+    padding: 10px;
+    border-radius: 10px;
+  }
+  .popup-header    { margin-bottom: 7px; }
+  .popup-title     { font-size: 0.7rem; }
+  .popup-section   { margin-bottom: 7px; }
+  .popup-label     { font-size: 0.6rem; margin-bottom: 4px; letter-spacing: 0.05em; }
+  .rename-row      { gap: 5px; }
+  .rename-input    { padding: 6px 8px; }
+  .rename-apply    { min-width: 36px; min-height: 36px; padding: 5px 9px; }
+  .popup-divider   { margin: 5px 0; }
+  .color-swatches  { gap: 5px; margin-bottom: 5px; }
+  .swatch          { width: 30px; height: 30px; border-radius: 7px; }
+  .color-custom    { height: 28px; }
+  .popup-close-btn { min-height: 38px; padding: 7px; font-size: 0.72rem; margin-top: 3px; }
+}
+
 .popup-header {
   display: flex;
   align-items: center;
@@ -535,10 +555,9 @@ watch(() => JSON.stringify(store.tree), () => {
   border: 1px solid var(--border, #1e2330);
   background: var(--bg, #0f1117);
   color: var(--text, #e2e8f0);
-  font-size: 0.85rem;
   outline: none;
   transition: border-color 0.15s;
-  /* Prevent iOS zoom on focus */
+  /* Prevent iOS auto-zoom on focus */
   font-size: max(16px, 0.85rem);
 }
 .rename-input:focus { border-color: rgba(59,130,246,0.5); }
@@ -580,16 +599,15 @@ watch(() => JSON.stringify(store.tree), () => {
   cursor: pointer;
   transition: transform 0.1s;
 }
-/* Touch: bigger swatches */
-@media (hover: none) {
-  .swatch {
-    width: 36px;
-    height: 36px;
-    border-radius: 8px;
-  }
-}
+/* Desktop hover: swatch sedikit lebih besar saat hover */
 .swatch:hover  { transform: scale(1.2); border-color: rgba(255,255,255,0.4); }
 .swatch.active { border-color: #fff; transform: scale(1.15); }
+
+/* Touch (non-mobile override — handled by max-width 480px above) */
+@media (hover: none) and (min-width: 481px) {
+  .swatch { width: 36px; height: 36px; border-radius: 8px; }
+}
+
 .color-custom {
   width: 100%;
   height: 36px;
