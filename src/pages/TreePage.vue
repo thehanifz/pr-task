@@ -41,8 +41,6 @@
 
         <!-- Fit View -->
         <button class="btn btn-ghost" @click="diagram?.fitView()" title="Fit to screen">⊡ Fit</button>
-        <!-- Reset -->
-        <button class="btn btn-danger" @click="confirmReset" title="Reset to default">↺ Reset</button>
       </div>
     </div>
 
@@ -141,10 +139,9 @@ onMounted(async () => {
       diagram.value?.fitView()
     }, 2000)
   } else if (result.ok && result.empty) {
-    autoLoadStatus.value = null  // sheet kosong, pakai data lokal, tidak perlu notif
+    autoLoadStatus.value = null
     setTimeout(() => diagram.value?.fitView(), 300)
   } else {
-    // Gagal load (no sheetId atau error network) → pakai localStorage diam-diam
     autoLoadStatus.value = null
     setTimeout(() => diagram.value?.fitView(), 300)
   }
@@ -171,14 +168,6 @@ const sheetsSaving  = computed(() => treeStore.sheetsStatus === 'saving')
 function addRootChild() {
   treeStore.addChild('root')
   showNotif('Node baru ditambahkan ke root')
-}
-
-function confirmReset() {
-  if (confirm('Reset tree ke default? Semua perubahan akan hilang.')) {
-    treeStore.resetTree()
-    showNotif('Tree berhasil direset')
-    setTimeout(() => diagram.value?.fitView(), 300)
-  }
 }
 
 async function handleImport(e) {
@@ -309,13 +298,6 @@ function exportPNG() {
 }
 .btn-sheets-save:hover:not(:disabled) { background: rgba(59,130,246,0.2); }
 .btn-sheets-save:disabled { opacity: 0.5; cursor: not-allowed; }
-
-.btn-danger {
-  background: rgba(239,68,68,0.12);
-  color: #ef4444;
-  border: 1px solid rgba(239,68,68,0.25);
-}
-.btn-danger:hover { background: rgba(239,68,68,0.22); }
 
 .shortcuts {
   display: flex;

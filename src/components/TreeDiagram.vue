@@ -17,10 +17,15 @@
       @click.stop
       @touchstart.stop
     >
-      <!-- Header -->
-      <div class="popup-header">
+      <!-- Header (draggable handle) -->
+      <div
+        class="popup-header"
+        @mousedown="startDrag"
+        @touchstart.prevent="startDragTouch"
+      >
+        <span class="popup-drag-hint">⠿</span>
         <span class="popup-title">✏️ Edit Node</span>
-        <button class="popup-close-x" @click="closePopup">×</button>
+        <button class="popup-close-x" @mousedown.stop @touchstart.stop @click="closePopup">×</button>
       </div>
 
       <!-- Rename -->
@@ -83,7 +88,6 @@ const renameInput = ref(null)
 // Deteksi touch device
 const isTouchDevice = computed(() => window.matchMedia('(hover: none)').matches)
 
-// Single unified popup (replace both color picker + dblclick rename)
 const popup = reactive({
   show:     false,
   nodeId:   null,
@@ -105,7 +109,63 @@ const NODE_RX = 8
 
 let svg, g, zoom
 
-// ── Long-press state ──────────────────────────
+// ── Drag popup state ─────────────────────────────
+let dragState = null
+
+function startDrag(e) {
+  if (e.button !== 0) return
+  dragState = {
+    startX: e.clientX - popup.x,
+    startY: e.clientY - popup.y
+  }
+  const onMove = (ev) => {
+    if (!dragState) return
+    const rect = wrapRef.value.getBoundingClientRect()
+    let nx = ev.clientX - rect.left - dragState.startX + popup.x
+    let ny = ev.clientY - rect.top  - dragState.startY + popup.y
+    // clamp
+    nx = Math.max(0, Math.min(nx, rect.width  - 220))
+    ny = Math.max(0, Math.min(ny, rect.height - 50))
+    popup.x = nx
+    popup.y = ny
+  }
+  const onUp = () => {
+    dragState = null
+    window.removeEventListener('mousemove', onMove)
+    window.removeEventListener('mouseup',   onUp)
+  }
+  window.addEventListener('mousemove', onMove)
+  window.addEventListener('mouseup',   onUp)
+}
+
+function startDragTouch(e) {
+  const touch = e.touches[0]
+  const rect  = wrapRef.value.getBoundingClientRect()
+  dragState = {
+    startX: touch.clientX - rect.left - popup.x,
+    startY: touch.clientY - rect.top  - popup.y
+  }
+  const onMove = (ev) => {
+    if (!dragState) return
+    const t   = ev.touches[0]
+    const r   = wrapRef.value.getBoundingClientRect()
+    let nx = t.clientX - r.left - dragState.startX
+    let ny = t.clientY - r.top  - dragState.startY
+    nx = Math.max(0, Math.min(nx, r.width  - 220))
+    ny = Math.max(0, Math.min(ny, r.height - 50))
+    popup.x = nx
+    popup.y = ny
+  }
+  const onEnd = () => {
+    dragState = null
+    window.removeEventListener('touchmove', onMove)
+    window.removeEventListener('touchend',  onEnd)
+  }
+  window.addEventListener('touchmove', onMove, { passive: true })
+  window.addEventListener('touchend',  onEnd)
+}
+
+// ── Long-press state ──────────────────────────────
 let longPressTimer = null
 const LONG_PRESS_MS = 500
 
@@ -128,17 +188,14 @@ function cancelLongPress() {
 function openPopupAt(clientX, clientY, d) {
   const rect     = wrapRef.value.getBoundingClientRect()
   const isTouch  = window.matchMedia('(hover: none)').matches
-  // popup dimensions (estimasi, tergantung media query)
   const popupW   = isTouch ? 210 : 230
   const popupH   = isTouch ? 250 : 280
 
   let x = clientX - rect.left
   let y = clientY - rect.top
 
-  // Di mobile, geser popup sedikit ke atas agar tidak nutupin titik sentuh
   if (isTouch) y -= 24
 
-  // Clamp agar tidak keluar batas
   if (x + popupW > rect.width)  x = rect.width  - popupW - 8
   if (y + popupH > rect.height) y = rect.height - popupH - 8
   if (x < 8) x = 8
@@ -162,7 +219,12 @@ function openPopup(event, d) {
   openPopupAt(event.clientX, event.clientY, d)
 }
 
+// closePopup selalu auto-save nama terlebih dahulu
 function closePopup() {
+  const name = popup.nameVal.trim()
+  if (name && popup.nodeId) {
+    store.updateNodeName(popup.nodeId, name)
+  }
   popup.show = false
 }
 
@@ -171,7 +233,7 @@ function applyRename() {
   if (name && popup.nodeId) {
     store.updateNodeName(popup.nodeId, name)
   }
-  closePopup()
+  popup.show = false
 }
 
 function applyColor(color) {
@@ -412,16 +474,17 @@ onMounted(() => {
   render()
   nextTick(() => fitView())
 
+  // Tutup popup saat klik/tap di luar → auto-save nama
   const handleOutsideClick = (e) => {
-    if (!e.target.closest('.node-popup') && !e.target.closest('.node')) {
+    if (popup.show && !e.target.closest('.node-popup')) {
       closePopup()
     }
   }
-  document.addEventListener('click', handleOutsideClick)
+  document.addEventListener('click',      handleOutsideClick)
   document.addEventListener('touchstart', handleOutsideClick)
 
   onUnmounted(() => {
-    document.removeEventListener('click', handleOutsideClick)
+    document.removeEventListener('click',      handleOutsideClick)
     document.removeEventListener('touchstart', handleOutsideClick)
     cancelLongPress()
   })
@@ -464,7 +527,7 @@ watch(() => JSON.stringify(store.tree), () => {
   backdrop-filter: blur(4px);
 }
 
-/* ── Node Popup (default / desktop) ───────── */
+/* ── Node Popup ───────────────────────────── */
 .node-popup {
   position: absolute;
   z-index: 200;
@@ -475,13 +538,15 @@ watch(() => JSON.stringify(store.tree), () => {
   min-width: 220px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.55);
   animation: popupIn 0.12s ease;
+  /* Prevent popup from being dragged as text selection */
+  user-select: none;
 }
 @keyframes popupIn {
   from { opacity: 0; transform: scale(0.94) translateY(-4px); }
   to   { opacity: 1; transform: none; }
 }
 
-/* ── Popup compact di mobile ───────────────── */
+/* ── Compact on mobile ───────────────────── */
 @media (max-width: 480px) {
   .node-popup {
     width: min(90vw, 210px);
@@ -493,7 +558,7 @@ watch(() => JSON.stringify(store.tree), () => {
   .popup-header    { margin-bottom: 7px; }
   .popup-title     { font-size: 0.7rem; }
   .popup-section   { margin-bottom: 7px; }
-  .popup-label     { font-size: 0.6rem; margin-bottom: 4px; letter-spacing: 0.05em; }
+  .popup-label     { font-size: 0.6rem; margin-bottom: 4px; }
   .rename-row      { gap: 5px; }
   .rename-input    { padding: 6px 8px; }
   .rename-apply    { min-width: 36px; min-height: 36px; padding: 5px 9px; }
@@ -509,8 +574,20 @@ watch(() => JSON.stringify(store.tree), () => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 10px;
+  cursor: grab;
+  padding: 2px 0 4px;
+  gap: 6px;
+}
+.popup-header:active { cursor: grabbing; }
+
+.popup-drag-hint {
+  color: var(--muted, #6b7280);
+  font-size: 1rem;
+  line-height: 1;
+  flex-shrink: 0;
 }
 .popup-title {
+  flex: 1;
   font-size: 0.75rem;
   font-weight: 700;
   color: var(--text, #e2e8f0);
@@ -528,6 +605,7 @@ watch(() => JSON.stringify(store.tree), () => {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 .popup-close-x:hover { color: var(--text, #e2e8f0); }
 
@@ -559,6 +637,7 @@ watch(() => JSON.stringify(store.tree), () => {
   transition: border-color 0.15s;
   /* Prevent iOS auto-zoom on focus */
   font-size: max(16px, 0.85rem);
+  user-select: text;
 }
 .rename-input:focus { border-color: rgba(59,130,246,0.5); }
 .rename-apply {
@@ -599,11 +678,10 @@ watch(() => JSON.stringify(store.tree), () => {
   cursor: pointer;
   transition: transform 0.1s;
 }
-/* Desktop hover: swatch sedikit lebih besar saat hover */
 .swatch:hover  { transform: scale(1.2); border-color: rgba(255,255,255,0.4); }
 .swatch.active { border-color: #fff; transform: scale(1.15); }
 
-/* Touch (non-mobile override — handled by max-width 480px above) */
+/* Touch tablet (non-mobile): swatch lebih besar */
 @media (hover: none) and (min-width: 481px) {
   .swatch { width: 36px; height: 36px; border-radius: 8px; }
 }
