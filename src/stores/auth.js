@@ -1,25 +1,28 @@
 /**
  * stores/auth.js
- * 
+ *
  * Config tersimpan di:
  * 1. localStorage (prtm_config) — cepat, lokal per-browser
  * 2. Server (server/data/users.json) — permanen, cross-browser
- * 
- * Flow:
- * - Login OAuth → otomatis pull config dari server → simpan ke localStorage
- * - saveConfig() → update localStorage + push ke server (jika sudah OAuth login)
+ *
+ * Fields yang disync ke server: sheetId, webhook, pinHash, name
+ * pinHash adalah SHA-256 (satu arah) — aman disimpan di server
+ *
+ * Flow cross-browser:
+ *   Login OAuth → pullConfigFromServer → restore pinHash+sheetId+webhook ke localStorage
+ *   saveConfig() → localStorage + pushConfigToServer (otomatis)
  */
 
-import { defineStore }   from 'pinia'
-import { ref, computed }  from 'vue'
-import { getStoredToken, isTokenValid, getAccessToken } from '@/services/googleOAuth'
+import { defineStore }  from 'pinia'
+import { ref, computed } from 'vue'
+import { getStoredToken, getAccessToken } from '@/services/googleOAuth'
 
-const LS_KEY      = 'prtm_config'
-const LS_LOCKOUT  = 'prtm_lockout'
-const SS_KEY      = 'prtm_unlocked'
+const LS_KEY     = 'prtm_config'
+const LS_LOCKOUT = 'prtm_lockout'
+const SS_KEY     = 'prtm_unlocked'
 
-const MAX_ATTEMPTS  = 3
-const LOCKOUT_MS    = 15 * 60 * 1000
+const MAX_ATTEMPTS = 3
+const LOCKOUT_MS   = 15 * 60 * 1000
 
 export const useAuthStore = defineStore('auth', () => {
   const config     = ref(loadConfig())
@@ -27,39 +30,32 @@ export const useAuthStore = defineStore('auth', () => {
   const syncing    = ref(false)
   const syncError  = ref('')
 
-  // ── Getters ────────────────────────────────
+  // ── Getters ──
   const isConfigured = computed(() => !!config.value?.pinHash)
-  const sheetId      = computed(() => config.value?.sheetId || '')
+  const sheetId      = computed(() => config.value?.sheetId    || '')
   const webhookUrl   = computed(() => config.value?.webhookUrl || '')
-  const userName     = computed(() => config.value?.name || 'User')
-  const isOAuthLogin = computed(() => {
-    const t = getStoredToken()
-    return !!(t?.access_token)
-  })
+  const userName     = computed(() => config.value?.name       || 'User')
+  const isOAuthLogin = computed(() => !!getStoredToken()?.access_token)
 
-  // ── Lockout Helpers ────────────────────────
+  // ── Lockout ──
   function loadLockout() {
     try { return JSON.parse(localStorage.getItem(LS_LOCKOUT)) || { attempts: 0, lockedUntil: null } }
     catch { return { attempts: 0, lockedUntil: null } }
   }
-  function saveLockout(data) {
-    localStorage.setItem(LS_LOCKOUT, JSON.stringify(data))
-  }
+  function saveLockout(data) { localStorage.setItem(LS_LOCKOUT, JSON.stringify(data)) }
   function getLockoutRemaining() {
     const lock = loadLockout()
     if (!lock.lockedUntil) return null
-    const remaining = lock.lockedUntil - Date.now()
-    if (remaining <= 0) { saveLockout({ attempts: 0, lockedUntil: null }); return null }
-    return remaining
+    const rem = lock.lockedUntil - Date.now()
+    if (rem <= 0) { saveLockout({ attempts: 0, lockedUntil: null }); return null }
+    return rem
   }
 
-  // ── Verify PIN ────────────────────────────
+  // ── Verify PIN ──
   async function verifyPin(pin) {
-    const remaining = getLockoutRemaining()
-    if (remaining !== null) {
-      const m = Math.ceil(remaining / 60000)
-      throw new Error(`Terlalu banyak percobaan. Coba lagi dalam ${m} menit.`)
-    }
+    const rem = getLockoutRemaining()
+    if (rem !== null) throw new Error(`Terlalu banyak percobaan. Coba lagi dalam ${Math.ceil(rem / 60000)} menit.`)
+
     const hash = await sha256(pin)
     if (hash === config.value?.pinHash) {
       saveLockout({ attempts: 0, lockedUntil: null })
@@ -67,6 +63,7 @@ export const useAuthStore = defineStore('auth', () => {
       sessionStorage.setItem(SS_KEY, '1')
       return true
     }
+
     const lock = loadLockout()
     lock.attempts = (lock.attempts || 0) + 1
     if (lock.attempts >= MAX_ATTEMPTS) {
@@ -84,29 +81,33 @@ export const useAuthStore = defineStore('auth', () => {
     sessionStorage.removeItem(SS_KEY)
   }
 
-  // ── Save Config (localStorage + server) ───
+  // ── Save Config (localStorage + push ke server) ──
   async function saveConfig({ name, pin, sheetId, webhookUrl }) {
     const newCfg = {
       name:       name       !== undefined ? name       : config.value?.name,
       sheetId:    sheetId    !== undefined ? sheetId    : config.value?.sheetId,
       webhookUrl: webhookUrl !== undefined ? webhookUrl : config.value?.webhookUrl,
-      pinHash:    config.value?.pinHash
+      pinHash:    config.value?.pinHash || ''
     }
     if (pin) newCfg.pinHash = await sha256(pin)
 
     config.value = newCfg
     persistConfig(newCfg)
 
-    // ✅ Push ke server jika sudah OAuth login
-    await pushConfigToServer(newCfg).catch(e => {
+    // Push ke server (termasuk pinHash)
+    await pushConfigToServer(newCfg).catch(e =>
       console.warn('[auth] Gagal sync ke server:', e.message)
-    })
+    )
   }
 
   async function changePin(newPin) {
     const hash = await sha256(newPin)
     config.value.pinHash = hash
     persistConfig(config.value)
+    // Sync pinHash baru ke server
+    await pushConfigToServer(config.value).catch(e =>
+      console.warn('[auth] Gagal sync pinHash ke server:', e.message)
+    )
   }
 
   function resetConfig() {
@@ -117,17 +118,17 @@ export const useAuthStore = defineStore('auth', () => {
     isUnlocked.value = false
   }
 
-  // ── Sync dari server ke localStorage ──────
+  // ── Pull dari server → localStorage ──
   /**
-   * Pull config dari server berdasarkan email OAuth.
-   * Dipanggil otomatis setelah login OAuth berhasil.
-   * Jika server punya data → merge ke localStorage (server menang untuk sheetId & webhook)
+   * Dipanggil setelah OAuth login berhasil.
+   * Server menang untuk: sheetId, webhook, pinHash
+   * localStorage dipertahankan sebagai fallback
    */
   async function pullConfigFromServer() {
     const token = getStoredToken()
     if (!token?.email) return { pulled: false, reason: 'no_oauth' }
 
-    syncing.value  = true
+    syncing.value   = true
     syncError.value = ''
     try {
       const res  = await fetch(`/api/user/${encodeURIComponent(token.email)}`)
@@ -139,18 +140,26 @@ export const useAuthStore = defineStore('auth', () => {
         return { pulled: false, reason: 'not_found' }
       }
 
-      // Merge — server menang untuk sheetId & webhook, localStorage dipertahankan untuk PIN & name
+      // Merge: server menang untuk semua field config
       const merged = {
         ...config.value,
-        sheetId:    data.sheetId    || config.value?.sheetId    || '',
-        webhookUrl: data.webhook    || config.value?.webhookUrl || '',
-        name:       data.name       || config.value?.name       || token.name || 'User'
+        sheetId:    data.sheetId  || config.value?.sheetId    || '',
+        webhookUrl: data.webhook  || config.value?.webhookUrl || '',
+        pinHash:    data.pinHash  || config.value?.pinHash    || '',  // ✅ restore PIN hash
+        name:       data.name     || config.value?.name       || token.name || 'User'
       }
+
       config.value = merged
       persistConfig(merged)
 
+      // Jika pinHash sudah ada, user tidak perlu setup ulang
+      if (merged.pinHash) {
+        syncing.value = false
+        return { pulled: true, hasPin: true }
+      }
+
       syncing.value = false
-      return { pulled: true, sheetId: merged.sheetId, webhookUrl: merged.webhookUrl }
+      return { pulled: true, hasPin: false }
     } catch (e) {
       syncError.value = e.message
       syncing.value   = false
@@ -158,29 +167,30 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  // ── Push config ke server ─────────────────
+  // ── Push ke server ──
   async function pushConfigToServer(cfg) {
     const token = getStoredToken()
-    if (!token?.email) return  // belum login OAuth, skip
+    if (!token?.email) return  // belum OAuth, skip
 
     let accessToken
-    try { accessToken = await getAccessToken() } catch { return }  // token expired, skip
+    try { accessToken = await getAccessToken() } catch { return }  // expired, skip
 
+    const current = cfg || config.value
     const body = {
       email:   token.email,
-      sheetId: cfg?.sheetId    || config.value?.sheetId    || '',
-      webhook: cfg?.webhookUrl || config.value?.webhookUrl || '',
-      name:    cfg?.name       || config.value?.name       || ''
+      sheetId: current?.sheetId    || '',
+      webhook: current?.webhookUrl || '',
+      pinHash: current?.pinHash    || '',  // ✅ ikut di-push
+      name:    current?.name       || ''
     }
-    if (!body.sheetId && !body.webhook) return  // tidak ada yang perlu disimpan
+
+    // Minimal ada satu field yang terisi
+    if (!body.sheetId && !body.webhook && !body.pinHash) return
 
     const res = await fetch('/api/user/save', {
       method:  'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${accessToken}`
-      },
-      body: JSON.stringify(body)
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken}` },
+      body:    JSON.stringify(body)
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
@@ -198,7 +208,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 })
 
-// ── Helpers ───────────────────────────────────
+// ── Helpers ──
 function loadConfig() {
   try { return JSON.parse(localStorage.getItem(LS_KEY)) || {} }
   catch { return {} }
