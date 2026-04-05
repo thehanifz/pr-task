@@ -7,3 +7,6 @@ dist/
 # PENTING: jangan commit credentials
 credential.json
 *.json.bak
+
+# User config — hanya ada di VPS, tidak di-commit
+src/user/data.js
