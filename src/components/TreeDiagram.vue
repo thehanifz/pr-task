@@ -4,12 +4,18 @@
       <g ref="gRef" />
     </svg>
 
-    <!-- Node Context Popup (klik kanan) -->
+    <!-- Mobile hint -->
+    <div v-if="isTouchDevice" class="touch-hint">
+      👆 Tap = collapse/expand &nbsp;·&nbsp; Hold = edit node
+    </div>
+
+    <!-- Node Context Popup (klik kanan / long-press) -->
     <div
       v-if="popup.show"
       class="node-popup"
       :style="{ top: popup.y + 'px', left: popup.x + 'px' }"
       @click.stop
+      @touchstart.stop
     >
       <!-- Header -->
       <div class="popup-header">
@@ -64,7 +70,7 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted, onUnmounted, reactive, nextTick } from 'vue'
+import { ref, watch, onMounted, onUnmounted, reactive, nextTick, computed } from 'vue'
 import * as d3 from 'd3'
 import { useTreeStore } from '@/stores/tree'
 
@@ -73,6 +79,9 @@ const svgRef   = ref(null)
 const gRef     = ref(null)
 const wrapRef  = ref(null)
 const renameInput = ref(null)
+
+// Deteksi touch device
+const isTouchDevice = computed(() => window.matchMedia('(hover: none)').matches)
 
 // Single unified popup (replace both color picker + dblclick rename)
 const popup = reactive({
@@ -96,17 +105,43 @@ const NODE_RX = 8
 
 let svg, g, zoom
 
-function openPopup(event, d) {
-  event.preventDefault()
-  event.stopPropagation()
+// ── Long-press state ──────────────────────────
+let longPressTimer = null
+const LONG_PRESS_MS = 500
+
+function startLongPress(event, d) {
+  // Batalkan timer sebelumnya
+  cancelLongPress()
+  longPressTimer = setTimeout(() => {
+    longPressTimer = null
+    // Ambil posisi dari touch
+    const touch = event.touches ? event.touches[0] : event
+    openPopupAt(touch.clientX, touch.clientY, d)
+  }, LONG_PRESS_MS)
+}
+
+function cancelLongPress() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer)
+    longPressTimer = null
+  }
+}
+
+function wasLongPress() {
+  // Jika timer sudah di-clear oleh longpress, return true
+  return longPressTimer === null
+}
+
+function openPopupAt(clientX, clientY, d) {
   const rect = wrapRef.value.getBoundingClientRect()
-  let x = event.clientX - rect.left
-  let y = event.clientY - rect.top
-  // Clamp agar tidak keluar batas kanan/bawah
-  const popupW = 210
-  const popupH = 220
+  let x = clientX - rect.left
+  let y = clientY - rect.top
+  const popupW = 230
+  const popupH = 280
   if (x + popupW > rect.width)  x = rect.width  - popupW - 8
   if (y + popupH > rect.height) y = rect.height - popupH - 8
+  if (x < 8) x = 8
+  if (y < 8) y = 8
   popup.show     = true
   popup.nodeId   = d.data.id
   popup.nameVal  = d.data.name
@@ -117,6 +152,12 @@ function openPopup(event, d) {
     renameInput.value?.focus()
     renameInput.value?.select()
   })
+}
+
+function openPopup(event, d) {
+  event.preventDefault()
+  event.stopPropagation()
+  openPopupAt(event.clientX, event.clientY, d)
 }
 
 function closePopup() {
@@ -149,6 +190,8 @@ function buildD3Tree(data) {
 
 function render() {
   if (!svgRef.value || !gRef.value) return
+  const isTouch = window.matchMedia('(hover: none)').matches
+
   const root = d3.hierarchy(buildD3Tree(store.tree), d => d.children)
 
   const treeLayout = d3.tree().nodeSize([NODE_H + 14, NODE_W + 60])
@@ -200,7 +243,7 @@ function render() {
     .attr('font-size', '12px')
     .attr('font-weight', '600')
     .attr('pointer-events', 'none')
-    .text(d => d.data.name.length > 16 ? d.data.name.slice(0, 15) + '…' : d.data.name)
+    .text(d => d.data.name.length > 16 ? d.data.name.slice(0, 15) + '\u2026' : d.data.name)
 
   // Collapse indicator dot
   nodeG.filter(d => d.data._children && d.data._children.length > 0)
@@ -222,16 +265,17 @@ function render() {
     .attr('font-size', '9px')
     .attr('font-weight', '800')
     .attr('pointer-events', 'none')
-    .text(d => d.data.collapsed ? '+' : '−')
+    .text(d => d.data.collapsed ? '+' : '\u2212')
 
-  // Add child button (+)
+  // ── Add child button (+) ───────────────────
   const addBtn = nodeG.append('g')
     .attr('class', 'add-btn')
     .attr('transform', `translate(${NODE_W / 2 + 18}, 0)`)
-    .style('opacity', 0)
+    // Touch: selalu tampil; Mouse: tampil saat hover
+    .style('opacity', isTouch ? 1 : 0)
 
   addBtn.append('circle')
-    .attr('r', 9)
+    .attr('r', isTouch ? 12 : 9)
     .attr('fill', 'rgba(255,255,255,0.08)')
     .attr('stroke', 'rgba(255,255,255,0.2)')
     .attr('stroke-width', 1)
@@ -240,7 +284,7 @@ function render() {
     .attr('text-anchor', 'middle')
     .attr('dominant-baseline', 'central')
     .attr('fill', 'rgba(255,255,255,0.7)')
-    .attr('font-size', '14px')
+    .attr('font-size', isTouch ? '16px' : '14px')
     .attr('pointer-events', 'none')
     .text('+')
 
@@ -249,15 +293,23 @@ function render() {
     store.addChild(d.data.id)
   })
 
-  // Delete button (×) — not for root
+  // Touch tap on add btn
+  addBtn.on('touchend', (event, d) => {
+    event.preventDefault()
+    event.stopPropagation()
+    cancelLongPress()
+    store.addChild(d.data.id)
+  })
+
+  // ── Delete button (×) — not for root ──────
   const delBtn = nodeG.filter(d => d.data.id !== 'root')
     .append('g')
     .attr('class', 'del-btn')
     .attr('transform', `translate(${-NODE_W / 2 - 18}, 0)`)
-    .style('opacity', 0)
+    .style('opacity', isTouch ? 1 : 0)
 
   delBtn.append('circle')
-    .attr('r', 9)
+    .attr('r', isTouch ? 12 : 9)
     .attr('fill', 'rgba(239,68,68,0.15)')
     .attr('stroke', 'rgba(239,68,68,0.4)')
     .attr('stroke-width', 1)
@@ -266,9 +318,9 @@ function render() {
     .attr('text-anchor', 'middle')
     .attr('dominant-baseline', 'central')
     .attr('fill', '#ef4444')
-    .attr('font-size', '12px')
+    .attr('font-size', isTouch ? '16px' : '12px')
     .attr('pointer-events', 'none')
-    .text('×')
+    .text('\u00d7')
 
   delBtn.on('click', (event, d) => {
     event.stopPropagation()
@@ -277,29 +329,62 @@ function render() {
     }
   })
 
-  // Hover show/hide buttons
-  nodeG
-    .on('mouseenter', function() {
-      d3.select(this).select('.add-btn').style('opacity', 1)
-      d3.select(this).select('.del-btn').style('opacity', 1)
-    })
-    .on('mouseleave', function() {
-      d3.select(this).select('.add-btn').style('opacity', 0)
-      d3.select(this).select('.del-btn').style('opacity', 0)
-    })
+  delBtn.on('touchend', (event, d) => {
+    event.preventDefault()
+    event.stopPropagation()
+    cancelLongPress()
+    if (confirm(`Hapus node "${d.data.name}" beserta semua anaknya?`)) {
+      store.deleteNode(d.data.id)
+    }
+  })
 
-  // Click = toggle collapse (hanya jika punya anak)
+  // ── Hover show/hide (mouse only) ──────────
+  if (!isTouch) {
+    nodeG
+      .on('mouseenter', function() {
+        d3.select(this).select('.add-btn').style('opacity', 1)
+        d3.select(this).select('.del-btn').style('opacity', 1)
+      })
+      .on('mouseleave', function() {
+        d3.select(this).select('.add-btn').style('opacity', 0)
+        d3.select(this).select('.del-btn').style('opacity', 0)
+      })
+  }
+
+  // ── Click = toggle collapse (mouse) ───────
   nodeG.on('click', (event, d) => {
     if (d.data._children && d.data._children.length > 0) {
       store.toggleCollapse(d.data.id)
     }
   })
 
-  // Right-click = buka popup edit (rename + color)
-  // dblclick dihapus — tidak ada lagi prompt() yang terpicu saat geser
+  // ── Right-click = buka popup (mouse) ──────
   nodeG.on('contextmenu', (event, d) => {
     openPopup(event, d)
   })
+
+  // ── Touch: long-press = buka popup, tap = collapse ──
+  nodeG
+    .on('touchstart', (event, d) => {
+      // Jangan trigger jika ada add/del button yang di-tap
+      if (event.target.closest('.add-btn') || event.target.closest('.del-btn')) return
+      startLongPress(event, d)
+    })
+    .on('touchend', (event, d) => {
+      const wasLP = longPressTimer === null && !popup.show
+      cancelLongPress()
+      // Jika bukan long press dan popup belum terbuka → toggle collapse
+      if (!wasLP && !popup.show) {
+        if (d.data._children && d.data._children.length > 0) {
+          event.preventDefault()
+          store.toggleCollapse(d.data.id)
+        }
+      }
+    })
+    .on('touchmove', () => {
+      // Batalkan long press jika user mulai scroll/drag
+      cancelLongPress()
+    })
 }
 
 function fitView() {
@@ -330,18 +415,20 @@ onMounted(() => {
   render()
   nextTick(() => fitView())
 
-  // Tutup popup saat klik di luar
-  document.addEventListener('click', closePopup)
-  document.addEventListener('contextmenu', (e) => {
-    // Jika klik kanan di luar SVG node, tutup popup
+  // Tutup popup saat klik/tap di luar
+  const handleOutsideClick = (e) => {
     if (!e.target.closest('.node-popup') && !e.target.closest('.node')) {
       closePopup()
     }
-  })
-})
+  }
+  document.addEventListener('click', handleOutsideClick)
+  document.addEventListener('touchstart', handleOutsideClick)
 
-onUnmounted(() => {
-  document.removeEventListener('click', closePopup)
+  onUnmounted(() => {
+    document.removeEventListener('click', handleOutsideClick)
+    document.removeEventListener('touchstart', handleOutsideClick)
+    cancelLongPress()
+  })
 })
 
 watch(() => JSON.stringify(store.tree), () => {
@@ -365,6 +452,22 @@ watch(() => JSON.stringify(store.tree), () => {
   display: block;
 }
 
+/* Touch hint */
+.touch-hint {
+  position: absolute;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.55);
+  color: rgba(255,255,255,0.55);
+  font-size: 0.65rem;
+  padding: 4px 10px;
+  border-radius: 20px;
+  pointer-events: none;
+  white-space: nowrap;
+  backdrop-filter: blur(4px);
+}
+
 /* ── Node Popup ───────────────────────────── */
 .node-popup {
   position: absolute;
@@ -373,7 +476,7 @@ watch(() => JSON.stringify(store.tree), () => {
   border: 1px solid var(--border, #1e2330);
   border-radius: 12px;
   padding: 12px;
-  min-width: 210px;
+  min-width: 220px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.55);
   animation: popupIn 0.12s ease;
 }
@@ -399,7 +502,12 @@ watch(() => JSON.stringify(store.tree), () => {
   font-size: 1.1rem;
   cursor: pointer;
   line-height: 1;
-  padding: 0 2px;
+  padding: 4px 6px;
+  min-width: 32px;
+  min-height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .popup-close-x:hover { color: var(--text, #e2e8f0); }
 
@@ -422,25 +530,32 @@ watch(() => JSON.stringify(store.tree), () => {
 }
 .rename-input {
   flex: 1;
-  padding: 6px 9px;
+  padding: 8px 9px;
   border-radius: 6px;
   border: 1px solid var(--border, #1e2330);
   background: var(--bg, #0f1117);
   color: var(--text, #e2e8f0);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   outline: none;
   transition: border-color 0.15s;
+  /* Prevent iOS zoom on focus */
+  font-size: max(16px, 0.85rem);
 }
 .rename-input:focus { border-color: rgba(59,130,246,0.5); }
 .rename-apply {
-  padding: 6px 10px;
+  padding: 8px 12px;
+  min-width: 40px;
+  min-height: 40px;
   border-radius: 6px;
   background: rgba(59,130,246,0.15);
   border: 1px solid rgba(59,130,246,0.3);
   color: #3b82f6;
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   cursor: pointer;
   transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .rename-apply:hover { background: rgba(59,130,246,0.28); }
 
@@ -458,18 +573,26 @@ watch(() => JSON.stringify(store.tree), () => {
   margin-bottom: 8px;
 }
 .swatch {
-  width: 24px;
-  height: 24px;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   border: 2px solid transparent;
   cursor: pointer;
   transition: transform 0.1s;
 }
+/* Touch: bigger swatches */
+@media (hover: none) {
+  .swatch {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+  }
+}
 .swatch:hover  { transform: scale(1.2); border-color: rgba(255,255,255,0.4); }
 .swatch.active { border-color: #fff; transform: scale(1.15); }
 .color-custom {
   width: 100%;
-  height: 32px;
+  height: 36px;
   border-radius: 6px;
   border: 1px solid var(--border, #1e2330);
   background: transparent;
@@ -479,12 +602,13 @@ watch(() => JSON.stringify(store.tree), () => {
 .popup-close-btn {
   width: 100%;
   margin-top: 4px;
-  padding: 6px;
+  padding: 10px;
+  min-height: 44px;
   border-radius: 6px;
   background: rgba(255,255,255,0.05);
   border: none;
   color: var(--text2, #9ca3af);
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   cursor: pointer;
   transition: background 0.15s;
 }

@@ -1,5 +1,8 @@
 <template>
-  <div :class="['task-card card card-hover', `status-${task.status}`]" @click="$emit('click', task)">
+  <div
+    :class="['task-card card card-hover', `status-${task.status}`]"
+    @click="$emit('click', task)"
+  >
     <!-- Top row -->
     <div class="card-top">
       <span :class="['badge', CAT_BADGE[task.cat] || 'cat-other']">{{ CAT_LABELS[task.cat] || task.cat }}</span>
@@ -55,11 +58,11 @@ import {
 const props = defineProps({ task: Object })
 defineEmits(['click', 'edit', 'delete'])
 
-const fillClass       = computed(() => progressFillClass(props.task.progress))
-const pctColor        = computed(() => props.task.progress >= 80 ? 'var(--green)' : props.task.progress >= 40 ? 'var(--yellow)' : 'var(--red)')
-const diff            = computed(() => deadlineDiff(props.task.target))
+const fillClass         = computed(() => progressFillClass(props.task.progress))
+const pctColor          = computed(() => props.task.progress >= 80 ? 'var(--green)' : props.task.progress >= 40 ? 'var(--yellow)' : 'var(--red)')
+const diff              = computed(() => deadlineDiff(props.task.target))
 const deadlineBadgeInfo = computed(() => deadlineBadge(diff.value))
-const dlColor         = computed(() => {
+const dlColor           = computed(() => {
   const d = diff.value
   if (d === null) return ''
   if (d < 0 || d === 0) return 'var(--red)'
@@ -79,8 +82,42 @@ const dlColor         = computed(() => {
   margin-bottom: 10px;
   gap: 8px;
 }
-.card-actions { display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s; }
+
+/* Desktop: tampil saat hover */
+.card-actions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
 .task-card:hover .card-actions { opacity: 1; }
+
+/* Mobile/touch: selalu tampil */
+@media (hover: none) {
+  .card-actions { opacity: 1 !important; }
+}
+
+/* Tap feedback */
+.task-card:active {
+  transform: scale(0.98);
+  transition: transform 0.1s;
+}
+
+/* Touch target minimum 44px */
+.icon-btn {
+  min-width: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+@media (hover: none) {
+  .icon-btn {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 1rem;
+  }
+}
 
 .task-name { font-size: 0.92rem; font-weight: 700; margin-bottom: 5px; line-height: 1.4; }
 .task-desc {
