@@ -28,26 +28,9 @@
         </router-link>
         <router-link to="/reminders" class="nav-item" @click="sidebarOpen = false">
           <span>⏰</span> Reminders
-          <span v-if="pendingReminders" class="nav-badge" style="background:rgba(245,158,11,0.3);color:var(--yellow)">
+          <span v-if="pendingReminders" class="nav-badge nav-badge--yellow">
             {{ pendingReminders }}
           </span>
-        </router-link>
-
-        <div class="nav-section">Filter Task</div>
-        <router-link to="/tasks?status=progress" class="nav-item" @click="sidebarOpen = false">
-          <span>🔄</span> Sedang Jalan
-          <span v-if="store.inProgressCount" class="nav-badge" style="background:rgba(59,130,246,0.2);color:#60a5fa">
-            {{ store.inProgressCount }}
-          </span>
-        </router-link>
-        <router-link to="/tasks?status=todo" class="nav-item" @click="sidebarOpen = false">
-          <span>⏳</span> Belum Mulai
-        </router-link>
-        <router-link to="/tasks?status=done" class="nav-item" @click="sidebarOpen = false">
-          <span>✅</span> Selesai
-        </router-link>
-        <router-link to="/tasks?status=paused" class="nav-item" @click="sidebarOpen = false">
-          <span>⏸️</span> Ditunda
         </router-link>
 
         <div class="nav-section">Tools</div>
@@ -60,6 +43,30 @@
           <span>⚙️</span> Pengaturan
         </router-link>
       </nav>
+
+      <!-- Status ringkas di sidebar bawah nav -->
+      <div class="sidebar-status">
+        <div class="status-row">
+          <router-link to="/tasks?status=progress" class="status-chip status-chip--blue" @click="sidebarOpen = false">
+            <span class="status-chip-dot" />Jalan
+            <span class="status-chip-count">{{ store.inProgressCount }}</span>
+          </router-link>
+          <router-link to="/tasks?status=todo" class="status-chip status-chip--muted" @click="sidebarOpen = false">
+            <span class="status-chip-dot" />Belum
+            <span class="status-chip-count">{{ store.todoCount }}</span>
+          </router-link>
+        </div>
+        <div class="status-row">
+          <router-link to="/tasks?status=done" class="status-chip status-chip--green" @click="sidebarOpen = false">
+            <span class="status-chip-dot" />Selesai
+            <span class="status-chip-count">{{ store.doneCount }}</span>
+          </router-link>
+          <router-link to="/tasks?status=paused" class="status-chip status-chip--orange" @click="sidebarOpen = false">
+            <span class="status-chip-dot" />Ditunda
+            <span class="status-chip-count">{{ store.pausedCount }}</span>
+          </router-link>
+        </div>
+      </div>
 
       <div class="sidebar-bottom">
         <div class="user-chip">
@@ -134,6 +141,32 @@ function lockApp() { auth.lock(); router.push('/lock') }
   font-size: 0.62rem; font-weight: 700; padding: 2px 6px;
   border-radius: 99px; font-family: var(--font-mono);
 }
+.nav-badge--yellow { background: rgba(245,158,11,0.2); color: var(--yellow); }
+
+/* Status chips area */
+.sidebar-status {
+  padding: 8px 10px 6px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.status-row { display: flex; gap: 6px; }
+.status-chip {
+  display: flex; align-items: center; gap: 5px;
+  flex: 1; padding: 5px 8px; border-radius: var(--radius);
+  font-size: 0.72rem; font-weight: 700; text-decoration: none;
+  background: var(--surface); color: var(--text2);
+  border: 1px solid var(--border); transition: all 0.15s;
+}
+.status-chip:hover { color: var(--text); border-color: var(--border2); }
+.status-chip-dot {
+  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
+  background: currentColor;
+}
+.status-chip-count { margin-left: auto; font-family: var(--font-mono); font-size: 0.68rem; }
+.status-chip--blue  { color: #60a5fa; }
+.status-chip--green { color: var(--green); }
+.status-chip--orange{ color: var(--yellow); }
+.status-chip--muted { color: var(--text2); }
 
 .sidebar-bottom { padding: 10px 8px 14px; border-top: 1px solid var(--border); }
 .user-chip { display: flex; align-items: center; gap: 10px; padding: 8px 10px; }

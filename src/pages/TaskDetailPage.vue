@@ -8,30 +8,30 @@
   <div v-else>
     <!-- Header -->
     <div class="detail-header">
-      <button class="btn btn-ghost btn-sm" @click="router.back()">← Kembali</button>
-      <div style="flex:1;min-width:0">
-        <div class="page-title" style="font-size:1.5rem">{{ task.name }}</div>
-        <div class="mono" style="font-size:0.67rem;color:var(--muted);margin-top:3px">ID: {{ task.id }}</div>
+      <button class="btn btn-ghost btn-sm back-btn" @click="router.back()">← Kembali</button>
+      <div class="detail-title-wrap">
+        <div class="page-title" style="font-size:1.3rem;line-height:1.3">{{ task.name }}</div>
+        <div class="detail-badges">
+          <span :class="['badge', STATUS_BADGE[task.status]]">{{ STATUS_LABELS[task.status] }}</span>
+          <span :class="['badge', CAT_BADGE[task.cat] || 'cat-other']">{{ CAT_LABELS[task.cat] || task.cat }}</span>
+          <span class="badge" style="background:var(--surface2);color:var(--text2)">
+            <span :class="['dot', PRIORITY_DOT[task.priority]]" style="margin-right:4px" />
+            {{ PRIORITY_LABELS[task.priority] }}
+          </span>
+        </div>
       </div>
-      <div class="page-actions">
-        <button class="btn btn-ghost btn-sm" @click="showReminderForm = true">⏰ Reminder</button>
-        <button class="btn btn-secondary btn-sm" @click="openEdit">✏️ Edit</button>
-        <button class="btn btn-primary btn-sm" @click="showLogForm = true">＋ Log</button>
-      </div>
+    </div>
+
+    <!-- Action bar -->
+    <div class="detail-actions">
+      <button class="btn btn-ghost btn-sm" @click="showReminderForm = true">⏰ Reminder</button>
+      <button class="btn btn-secondary btn-sm" @click="openEdit">✏️ Edit</button>
+      <button class="btn btn-primary btn-sm" @click="showLogForm = true">＋ Log</button>
     </div>
 
     <!-- Info card -->
     <div class="card" style="margin-bottom:14px">
-      <div class="badge-row">
-        <span :class="['badge', STATUS_BADGE[task.status]]">{{ STATUS_LABELS[task.status] }}</span>
-        <span :class="['badge', CAT_BADGE[task.cat] || 'cat-other']">{{ CAT_LABELS[task.cat] || task.cat }}</span>
-        <span class="badge" style="background:var(--surface2);color:var(--text2)">
-          <span :class="['dot', PRIORITY_DOT[task.priority]]" style="margin-right:4px" />
-          {{ PRIORITY_LABELS[task.priority] }}
-        </span>
-      </div>
-
-      <p v-if="task.desc" style="color:var(--text2);font-size:0.85rem;line-height:1.7;margin:14px 0">{{ task.desc }}</p>
+      <p v-if="task.desc" style="color:var(--text2);font-size:0.85rem;line-height:1.7;margin-bottom:14px">{{ task.desc }}</p>
 
       <!-- Big progress -->
       <div class="big-progress">
@@ -116,9 +116,9 @@ const toast  = useToast()
 const showEditForm     = ref(false)
 const showLogForm      = ref(false)
 const showReminderForm = ref(false)
-const showDeleteLog = ref(false)
-const editTask = ref(null)
-const deleteLogTarget = ref(null)
+const showDeleteLog    = ref(false)
+const editTask         = ref(null)
+const deleteLogTarget  = ref(null)
 
 const task     = computed(() => store.getTaskById(props.id))
 const taskLogs = computed(() => store.getLogsByTask(props.id))
@@ -142,10 +142,22 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* Header: back button + title stack */
 .detail-header {
   display: flex; align-items: flex-start; gap: 12px;
-  margin-bottom: 24px; flex-wrap: wrap;
+  margin-bottom: 12px;
 }
+.back-btn { flex-shrink: 0; margin-top: 4px; }
+.detail-title-wrap { flex: 1; min-width: 0; }
+.detail-badges { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+
+/* Action bar: tombol terpisah di bawah judul */
+.detail-actions {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  margin-bottom: 18px;
+  padding-left: 0;
+}
+
 .badge-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
 .big-progress { margin: 18px 0; }
 .big-pct { font-size: 2.2rem; font-weight: 800; color: var(--accent); line-height: 1; }
@@ -157,4 +169,9 @@ onMounted(() => {
 .log-entry { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 15px; }
 .log-top { display: flex; justify-content: space-between; align-items: center; }
 .no-log { text-align: center; color: var(--muted); font-size: 0.82rem; padding: 28px; }
+
+@media (max-width: 600px) {
+  .detail-actions { gap: 6px; }
+  .detail-actions .btn { flex: 1; justify-content: center; }
+}
 </style>

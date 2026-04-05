@@ -6,27 +6,36 @@
         <div class="page-sub">{{ filtered.length }} task</div>
       </div>
       <div class="page-actions">
-        <button class="btn btn-secondary btn-sm" :disabled="store.loading" @click="store.loadAll()">🔄 Refresh</button>
+        <button class="btn btn-secondary btn-sm" :disabled="store.loading" @click="store.loadAll()">Refresh</button>
         <button class="btn btn-primary" @click="openAdd">＋ Task Baru</button>
       </div>
     </div>
 
     <!-- Filter & Search -->
     <div class="filter-bar">
-      <button
-        v-for="f in FILTERS" :key="f.value"
-        :class="['filter-btn', { active: activeFilter === f.value }]"
-        @click="setFilter(f.value)"
-      >{{ f.label }}</button>
-      <select v-model="sortBy" class="sort-select">
-        <option value="order">Urutan Prioritas</option>
-        <option value="progress_desc">Progress ↓</option>
-        <option value="progress_asc">Progress ↑</option>
-        <option value="deadline">Deadline Terdekat</option>
-        <option value="name">Nama A-Z</option>
-        <option value="priority">Prioritas</option>
-      </select>
-      <input v-model="search" class="search-input" placeholder="🔍 Cari task..." />
+      <!-- Row 1: status filter tabs -->
+      <div class="filter-tabs">
+        <button
+          v-for="f in FILTERS" :key="f.value"
+          :class="['filter-btn', { active: activeFilter === f.value }]"
+          @click="setFilter(f.value)"
+        >
+          {{ f.label }}
+          <span class="filter-count">{{ statusCount(f.value) }}</span>
+        </button>
+      </div>
+      <!-- Row 2: sort + search -->
+      <div class="filter-controls">
+        <select v-model="sortBy" class="sort-select">
+          <option value="order">Urutan Prioritas</option>
+          <option value="progress_desc">Progress ↓</option>
+          <option value="progress_asc">Progress ↑</option>
+          <option value="deadline">Deadline Terdekat</option>
+          <option value="name">Nama A-Z</option>
+          <option value="priority">Prioritas</option>
+        </select>
+        <input v-model="search" class="search-input" placeholder="Cari task..." />
+      </div>
     </div>
 
     <!-- Task Grid -->
@@ -70,8 +79,8 @@ const toast  = useToast()
 
 const FILTERS = [
   { value: 'all',      label: 'Semua' },
-  { value: 'todo',     label: 'Belum Mulai' },
-  { value: 'progress', label: 'Sedang Jalan' },
+  { value: 'todo',     label: 'Belum' },
+  { value: 'progress', label: 'Jalan' },
   { value: 'done',     label: 'Selesai' },
   { value: 'paused',   label: 'Ditunda' }
 ]
@@ -93,16 +102,19 @@ const pageTitle = computed(() => {
   return f?.value === 'all' ? 'Semua Task' : f?.label || 'Task'
 })
 
+function statusCount(filterVal) {
+  if (filterVal === 'all') return store.tasks.length
+  return store.tasks.filter(t => t.status === filterVal).length
+}
+
 const filtered = computed(() => {
   const q = search.value.toLowerCase()
   let list = store.tasks.filter(t => {
     if (activeFilter.value !== 'all' && t.status !== activeFilter.value) return false
-    if (q && !t.name.toLowerCase().includes(q) && !t.desc.toLowerCase().includes(q)) return false
+    if (q && !t.name.toLowerCase().includes(q) && !(t.desc || '').toLowerCase().includes(q)) return false
     return true
   })
 
-  // Sort
-  const today = new Date(); today.setHours(0,0,0,0)
   switch (sortBy.value) {
     case 'order':
       list = list.sort((a,b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999))
@@ -150,31 +162,49 @@ onMounted(() => { if (!store.tasks.length) store.loadAll() })
 </script>
 
 <style scoped>
+/* Filter bar: 2 row layout */
 .filter-bar {
-  display: flex; gap: 8px; flex-wrap: wrap;
-  align-items: center; margin-bottom: 20px;
+  display: flex; flex-direction: column; gap: 10px;
+  margin-bottom: 20px;
+}
+
+/* Row 1: filter tabs */
+.filter-tabs {
+  display: flex; gap: 6px; flex-wrap: wrap;
 }
 .filter-btn {
-  padding: 6px 14px; border-radius: 99px;
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 12px; border-radius: 99px;
   font-size: 0.75rem; font-weight: 700;
   border: 1px solid var(--border); background: transparent; color: var(--text2);
-  transition: all 0.15s;
+  transition: all 0.15s; cursor: pointer;
 }
 .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 .filter-btn:hover:not(.active) { border-color: var(--border2); color: var(--text); }
+.filter-count {
+  background: rgba(255,255,255,0.15); border-radius: 99px;
+  padding: 1px 5px; font-size: 0.65rem; font-family: var(--font-mono);
+  min-width: 18px; text-align: center;
+}
+.filter-btn:not(.active) .filter-count { background: var(--surface2); color: var(--muted); }
 
+/* Row 2: sort + search */
+.filter-controls {
+  display: flex; gap: 8px; align-items: center;
+}
 .sort-select {
   background: var(--surface); border: 1px solid var(--border);
   color: var(--text); font-size: 0.78rem; font-weight: 600;
-  padding: 6px 10px; border-radius: var(--radius); outline: none;
+  padding: 7px 10px; border-radius: var(--radius); outline: none;
   cursor: pointer; font-family: var(--font-body); transition: border-color 0.15s;
+  flex-shrink: 0;
 }
 .sort-select:focus { border-color: var(--accent); }
 
 .search-input {
-  margin-left: auto; background: var(--surface); border: 1px solid var(--border);
+  flex: 1; background: var(--surface); border: 1px solid var(--border);
   color: var(--text); font-size: 0.82rem; padding: 7px 14px;
-  border-radius: var(--radius); outline: none; width: 210px;
+  border-radius: var(--radius); outline: none;
   transition: border-color 0.18s; font-family: var(--font-body);
 }
 .search-input:focus { border-color: var(--accent); }
@@ -183,8 +213,8 @@ onMounted(() => { if (!store.tasks.length) store.loadAll() })
 .task-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
 
 @media (max-width: 600px) {
-  .search-input { width: 100%; margin-left: 0; }
-  .task-grid { grid-template-columns: 1fr; }
+  .filter-controls { flex-direction: column; align-items: stretch; }
   .sort-select { width: 100%; }
+  .task-grid { grid-template-columns: 1fr; }
 }
 </style>

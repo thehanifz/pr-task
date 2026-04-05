@@ -1,8 +1,11 @@
 <template>
   <div
-    :class="['task-card card card-hover', `status-${task.status}`]"
+    :class="['task-card card card-hover', `status-${task.status}`, { 'is-overdue': isOverdue }]"
     @click="$emit('click', task)"
   >
+    <!-- Overdue banner -->
+    <div v-if="isOverdue" class="overdue-banner">⚠️ Overdue {{ Math.abs(diff) }}h hari</div>
+
     <!-- Top row -->
     <div class="card-top">
       <span :class="['badge', CAT_BADGE[task.cat] || 'cat-other']">{{ CAT_LABELS[task.cat] || task.cat }}</span>
@@ -13,7 +16,7 @@
     </div>
 
     <!-- Name & desc -->
-    <div class="task-name">{{ task.name }}</div>
+    <div :class="['task-name', { 'task-done': task.status === 'done' }]">{{ task.name }}</div>
     <div v-if="task.desc" class="task-desc">{{ task.desc }}</div>
 
     <!-- Progress -->
@@ -29,18 +32,18 @@
 
     <!-- Meta -->
     <div class="card-meta">
-      <span class="meta-item">
-        <span :class="['dot', PRIORITY_DOT[task.priority]]" />
-        {{ PRIORITY_LABELS[task.priority] }}
+      <span class="meta-left">
+        <span :class="['priority-pill', `priority-${task.priority}`]">
+          {{ PRIORITY_LABELS[task.priority] }}
+        </span>
+        <span :class="['badge', STATUS_BADGE[task.status]]" style="font-size:0.65rem">
+          {{ STATUS_LABELS[task.status] }}
+        </span>
       </span>
-      <span :class="['badge', STATUS_BADGE[task.status]]" style="font-size:0.62rem">
-        {{ STATUS_LABELS[task.status] }}
-      </span>
-      <span v-if="deadlineBadgeInfo && task.status !== 'done'" class="meta-item" :style="{ color: dlColor }">
-        📅 {{ deadlineBadgeInfo.text }}
-      </span>
-      <span v-if="task.start" class="meta-item mono" style="font-size:0.68rem;color:var(--text2)">
-        🗓 {{ task.start }}
+      <span class="meta-right">
+        <span v-if="deadlineBadgeInfo && task.status !== 'done'" class="deadline-tag" :style="{ color: dlColor }">
+          📅 {{ deadlineBadgeInfo.text }}
+        </span>
       </span>
     </div>
   </div>
@@ -62,6 +65,7 @@ const fillClass         = computed(() => progressFillClass(props.task.progress))
 const pctColor          = computed(() => props.task.progress >= 80 ? 'var(--green)' : props.task.progress >= 40 ? 'var(--yellow)' : 'var(--red)')
 const diff              = computed(() => deadlineDiff(props.task.target))
 const deadlineBadgeInfo = computed(() => deadlineBadge(diff.value))
+const isOverdue         = computed(() => diff.value !== null && diff.value < 0 && props.task.status !== 'done')
 const dlColor           = computed(() => {
   const d = diff.value
   if (d === null) return ''
@@ -72,8 +76,24 @@ const dlColor           = computed(() => {
 </script>
 
 <style scoped>
-.task-card { cursor: pointer; }
+.task-card { cursor: pointer; position: relative; overflow: hidden; }
 .task-card.status-done { opacity: 0.65; }
+
+/* Overdue: left border merah + subtle bg */
+.task-card.is-overdue {
+  border-left: 3px solid var(--red) !important;
+  background: color-mix(in srgb, var(--surface) 94%, var(--red) 6%) !important;
+}
+.overdue-banner {
+  font-size: 0.68rem; font-weight: 700; color: var(--red);
+  margin-bottom: 8px; letter-spacing: 0.02em;
+}
+
+/* Done: strikethrough nama */
+.task-name.task-done {
+  text-decoration: line-through;
+  color: var(--muted);
+}
 
 .card-top {
   display: flex;
@@ -97,26 +117,17 @@ const dlColor           = computed(() => {
   .card-actions { opacity: 1 !important; }
 }
 
-/* Tap feedback */
 .task-card:active {
   transform: scale(0.98);
   transition: transform 0.1s;
 }
 
-/* Touch target minimum 44px */
 .icon-btn {
-  min-width: 36px;
-  min-height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  min-width: 36px; min-height: 36px;
+  display: flex; align-items: center; justify-content: center;
 }
 @media (hover: none) {
-  .icon-btn {
-    min-width: 44px;
-    min-height: 44px;
-    font-size: 1rem;
-  }
+  .icon-btn { min-width: 44px; min-height: 44px; font-size: 1rem; }
 }
 
 .task-name { font-size: 0.92rem; font-weight: 700; margin-bottom: 5px; line-height: 1.4; }
@@ -128,12 +139,27 @@ const dlColor           = computed(() => {
 .card-progress { margin-bottom: 12px; }
 .cp-top { display: flex; justify-content: space-between; margin-bottom: 5px; }
 
+/* Meta: 2 sisi */
 .card-meta {
   display: flex; align-items: center;
+  justify-content: space-between;
   gap: 8px; flex-wrap: wrap;
+  margin-top: 4px;
 }
-.meta-item {
-  display: flex; align-items: center; gap: 4px;
-  font-size: 0.7rem; color: var(--text2);
+.meta-left  { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.meta-right { display: flex; align-items: center; gap: 6px; }
+
+/* Priority pill */
+.priority-pill {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: 99px;
+  font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+}
+.priority-high { background: rgba(239,68,68,0.15); color: var(--red); }
+.priority-med  { background: rgba(245,158,11,0.15); color: var(--yellow); }
+.priority-low  { background: rgba(107,114,128,0.15); color: var(--muted); }
+
+.deadline-tag {
+  font-size: 0.7rem; font-weight: 600;
 }
 </style>
