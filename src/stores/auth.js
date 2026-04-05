@@ -5,16 +5,16 @@
  * 1. localStorage (prtm_config) — cepat, lokal per-browser
  * 2. Server (server/data/users.json) — permanen, cross-browser
  *
- * Fields yang disync ke server: sheetId, webhook, pinHash, name
- * pinHash adalah SHA-256 (satu arah) — aman disimpan di server
+ * Flow logout:
+ *   logout() → hapus SEMUA data lokal (token + config + lockout + session)
+ *   → isConfigured = false → router guard redirect ke /login
  *
- * Flow cross-browser:
- *   Login OAuth → pullConfigFromServer → restore pinHash+sheetId+webhook ke localStorage
- *   saveConfig() → localStorage + pushConfigToServer (otomatis)
+ * Flow login kembali:
+ *   OAuth → OAuthCallback → pullConfigFromServer → restore semua config dari server
  */
 
-import { defineStore }  from 'pinia'
-import { ref, computed } from 'vue'
+import { defineStore }   from 'pinia'
+import { ref, computed }  from 'vue'
 import { getStoredToken, getAccessToken, clearToken } from '@/services/googleOAuth'
 
 const LS_KEY     = 'prtm_config'
@@ -93,8 +93,6 @@ export const useAuthStore = defineStore('auth', () => {
 
     config.value = newCfg
     persistConfig(newCfg)
-
-    // Selalu push ke server jika sudah OAuth login
     await pushConfigToServer(newCfg).catch(e =>
       console.warn('[auth] Gagal sync ke server:', e.message)
     )
@@ -110,27 +108,25 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Logout penuh:
-   * - Hapus OAuth token
-   * - Hapus config lokal (optional: bisa dipertahankan)
-   * - Clear session unlock
-   * - Return true agar caller bisa redirect ke /login
+   * Logout penuh — hapus SEMUA data lokal.
+   * Data tetap ada di server, akan di-restore saat login lagi via pullConfigFromServer.
    */
   function logout() {
-    clearToken()                        // hapus prtm_oauth_token
+    clearToken()                            // hapus prtm_oauth_token
+    localStorage.removeItem(LS_KEY)        // hapus config (termasuk pinHash)
+    localStorage.removeItem(LS_LOCKOUT)    // hapus lockout state
+    sessionStorage.removeItem(SS_KEY)      // hapus session unlock
+    config.value     = {}                  // reset reactive state
     isUnlocked.value = false
-    sessionStorage.removeItem(SS_KEY)  // hapus session unlock
-    // config & pinHash tetap di localStorage agar saat login lagi tidak perlu setup ulang
-    // (pinHash akan di-verify ulang setelah OAuth)
+    // isConfigured otomatis false → router guard redirect ke /login ✓
   }
 
+  /**
+   * Reset App (Danger Zone) — sama dengan logout tapi juga hapus data di server? Tidak.
+   * Hanya hapus lokal, server tetap. Konsisten dengan logout.
+   */
   function resetConfig() {
-    localStorage.removeItem(LS_KEY)
-    localStorage.removeItem(LS_LOCKOUT)
-    sessionStorage.removeItem(SS_KEY)
-    clearToken()
-    config.value     = {}
-    isUnlocked.value = false
+    logout()  // reuse logout untuk clear semua
   }
 
   // ── Pull dari server → localStorage ──
@@ -150,13 +146,11 @@ export const useAuthStore = defineStore('auth', () => {
         return { pulled: false, reason: 'not_found' }
       }
 
-      // Server menang untuk semua field
       const merged = {
-        ...config.value,
-        sheetId:    data.sheetId  || config.value?.sheetId    || '',
-        webhookUrl: data.webhook  || config.value?.webhookUrl || '',
-        pinHash:    data.pinHash  || config.value?.pinHash    || '',
-        name:       data.name     || config.value?.name       || token.name || 'User'
+        sheetId:    data.sheetId  || '',
+        webhookUrl: data.webhook  || '',
+        pinHash:    data.pinHash  || '',
+        name:       data.name     || token.name || 'User'
       }
 
       config.value = merged
@@ -174,10 +168,10 @@ export const useAuthStore = defineStore('auth', () => {
   // ── Push ke server ──
   async function pushConfigToServer(cfg) {
     const token = getStoredToken()
-    if (!token?.email) return  // belum OAuth, skip
+    if (!token?.email) return
 
     let accessToken
-    try { accessToken = await getAccessToken() } catch { return }  // expired, skip
+    try { accessToken = await getAccessToken() } catch { return }
 
     const current = cfg || config.value
     const body = {
@@ -188,8 +182,6 @@ export const useAuthStore = defineStore('auth', () => {
       name:    current?.name       || ''
     }
 
-    // ✅ Selalu push selama ada email — tidak ada skip condition lagi
-    // (setidaknya name akan tersimpan)
     if (!body.email) return
 
     const res = await fetch('/api/user/save', {

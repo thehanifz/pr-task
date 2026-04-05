@@ -18,7 +18,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const DATA_DIR  = path.join(__dirname, '../data')
 const DATA_PATH = path.join(DATA_DIR, 'users.json')
 
-// ── Encrypt/Decrypt (untuk sheetId & webhook) ──
+// ── Encrypt/Decrypt ──
 function getKey() { return process.env.VITE_SECRET_KEY || 'prtm_fallback_key_32chars_xxxxx' }
 function encrypt(val) {
   if (!val) return ''
@@ -61,12 +61,12 @@ router.get('/:email', async (req, res) => {
     if (!entry) return res.json({ found: false })
 
     res.json({
-      found:      true,
-      sheetId:    decrypt(entry.sheetId),
-      webhook:    decrypt(entry.webhook),
-      pinHash:    entry.pinHash   || '',   // SHA-256, aman dikirim ke client sendiri
-      name:       entry.name      || '',
-      updatedAt:  entry.updatedAt || null
+      found:     true,
+      sheetId:   decrypt(entry.sheetId),
+      webhook:   decrypt(entry.webhook),
+      pinHash:   entry.pinHash  || '',
+      name:      entry.name     || '',
+      updatedAt: entry.updatedAt || null
     })
   } catch (err) {
     console.error('[GET /api/user]', err.message)
@@ -81,18 +81,21 @@ router.post('/save', async (req, res) => {
     if (!tokenEmail) return res.status(401).json({ error: 'Token tidak valid atau sudah expired' })
 
     const { email, sheetId, webhook, name, pinHash } = req.body
+
+    // Validasi minimal: hanya butuh email yang valid & match token
     if (!email) return res.status(400).json({ error: 'email wajib diisi' })
     if (tokenEmail !== email) return res.status(403).json({ error: 'Email tidak sesuai dengan token Google' })
 
     const users    = await loadUsers()
     const existing = users[email] || {}
 
+    // Merge: pakai nilai baru jika ada, pertahankan lama jika kosong
     users[email] = {
-      sheetId:    sheetId ? encrypt(sheetId) : existing.sheetId  || '',
-      webhook:    webhook ? encrypt(webhook) : existing.webhook  || '',
-      pinHash:    pinHash || existing.pinHash || '',   // SHA-256 hash, plain (tidak perlu double-encrypt)
-      name:       name    || existing.name    || '',
-      updatedAt:  new Date().toISOString()
+      sheetId:   sheetId ? encrypt(sheetId) : existing.sheetId  || '',
+      webhook:   webhook ? encrypt(webhook) : existing.webhook  || '',
+      pinHash:   pinHash || existing.pinHash || '',
+      name:      name    || existing.name    || '',
+      updatedAt: new Date().toISOString()
     }
 
     await saveUsers(users)
