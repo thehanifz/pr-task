@@ -23,9 +23,6 @@
           <span>📋</span> Semua Task
           <span class="nav-badge">{{ store.totalTasks }}</span>
         </router-link>
-        <router-link to="/priority" class="nav-item" @click="sidebarOpen = false">
-          <span>🎯</span> Atur Prioritas
-        </router-link>
         <router-link to="/reminders" class="nav-item" @click="sidebarOpen = false">
           <span>⏰</span> Reminders
           <span v-if="pendingReminders" class="nav-badge nav-badge--yellow">
@@ -44,7 +41,7 @@
         </router-link>
       </nav>
 
-      <!-- Status ringkas di sidebar bawah nav -->
+      <!-- Status chips -->
       <div class="sidebar-status">
         <div class="status-row">
           <router-link to="/tasks?status=progress" class="status-chip status-chip--blue" @click="sidebarOpen = false">
@@ -143,7 +140,6 @@ function lockApp() { auth.lock(); router.push('/lock') }
 }
 .nav-badge--yellow { background: rgba(245,158,11,0.2); color: var(--yellow); }
 
-/* Status chips area */
 .sidebar-status {
   padding: 8px 10px 6px;
   border-top: 1px solid var(--border);
@@ -158,10 +154,7 @@ function lockApp() { auth.lock(); router.push('/lock') }
   border: 1px solid var(--border); transition: all 0.15s;
 }
 .status-chip:hover { color: var(--text); border-color: var(--border2); }
-.status-chip-dot {
-  width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0;
-  background: currentColor;
-}
+.status-chip-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: currentColor; }
 .status-chip-count { margin-left: auto; font-family: var(--font-mono); font-size: 0.68rem; }
 .status-chip--blue  { color: #60a5fa; }
 .status-chip--green { color: var(--green); }

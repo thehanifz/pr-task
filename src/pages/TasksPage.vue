@@ -13,7 +13,7 @@
 
     <!-- Filter & Search -->
     <div class="filter-bar">
-      <!-- Row 1: status filter tabs -->
+      <!-- Row 1: status tabs -->
       <div class="filter-tabs">
         <button
           v-for="f in FILTERS" :key="f.value"
@@ -24,16 +24,20 @@
           <span class="filter-count">{{ statusCount(f.value) }}</span>
         </button>
       </div>
-      <!-- Row 2: sort + search -->
-      <div class="filter-controls">
-        <select v-model="sortBy" class="sort-select">
-          <option value="order">Urutan Prioritas</option>
-          <option value="progress_desc">Progress ↓</option>
-          <option value="progress_asc">Progress ↑</option>
-          <option value="deadline">Deadline Terdekat</option>
-          <option value="name">Nama A-Z</option>
-          <option value="priority">Prioritas</option>
-        </select>
+
+      <!-- Row 2: sort controls -->
+      <div class="sort-bar">
+        <span class="sort-label">Urutkan:</span>
+        <div class="sort-group">
+          <button
+            v-for="s in SORTS" :key="s.value"
+            :class="['sort-btn', { active: sortBy === s.value }]"
+            @click="toggleSort(s.value)"
+          >
+            {{ s.label }}
+            <span v-if="sortBy === s.value" class="sort-dir">{{ sortDir === 'asc' ? '↑' : '↓' }}</span>
+          </button>
+        </div>
         <input v-model="search" class="search-input" placeholder="Cari task..." />
       </div>
     </div>
@@ -78,72 +82,116 @@ const router = useRouter()
 const toast  = useToast()
 
 const FILTERS = [
-  { value: 'all',      label: 'Semua' },
+  { value: 'active', label: 'Aktif' },
   { value: 'todo',     label: 'Belum' },
   { value: 'progress', label: 'Jalan' },
-  { value: 'done',     label: 'Selesai' },
-  { value: 'paused',   label: 'Ditunda' }
+  { value: 'paused',   label: 'Ditunda' },
+  { value: 'done',     label: 'Selesai' }
+]
+
+// Sort options: name, priority, deadline — each toggles asc/desc
+const SORTS = [
+  { value: 'name',     label: 'Nama' },
+  { value: 'priority', label: 'Prioritas' },
+  { value: 'deadline', label: 'Deadline' }
 ]
 
 const PRIORITY_ORDER = { high: 0, med: 1, low: 2 }
 
-const activeFilter = ref('all')
+const activeFilter = ref('active') // default: sembunyikan done
 const search   = ref('')
-const sortBy   = ref('order')
+const sortBy   = ref('priority')   // default sort: prioritas
+const sortDir  = ref('asc')        // asc | desc
 const showForm = ref(false)
 const editTarget = ref(null)
 const showConfirm = ref(false)
 const deleteTarget = ref(null)
 
-watch(() => route.query.status, (s) => { activeFilter.value = s || 'all' }, { immediate: true })
+// Sync filter dari URL query ?status=xxx
+watch(() => route.query.status, (s) => {
+  if (!s) { activeFilter.value = 'active'; return }
+  // Map status query ke filter value
+  activeFilter.value = s
+}, { immediate: true })
 
 const pageTitle = computed(() => {
-  const f = FILTERS.find(f => f.value === activeFilter.value)
-  return f?.value === 'all' ? 'Semua Task' : f?.label || 'Task'
+  const map = {
+    active: 'Semua Task Aktif',
+    todo: 'Belum Mulai',
+    progress: 'Sedang Jalan',
+    paused: 'Ditunda',
+    done: 'Selesai'
+  }
+  return map[activeFilter.value] || 'Semua Task'
 })
 
-function statusCount(filterVal) {
-  if (filterVal === 'all') return store.tasks.length
-  return store.tasks.filter(t => t.status === filterVal).length
+function statusCount(f) {
+  if (f === 'active') return store.tasks.filter(t => t.status !== 'done').length
+  return store.tasks.filter(t => t.status === f).length
+}
+
+function toggleSort(val) {
+  if (sortBy.value === val) {
+    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    sortBy.value = val
+    sortDir.value = 'asc'
+  }
 }
 
 const filtered = computed(() => {
   const q = search.value.toLowerCase()
+
   let list = store.tasks.filter(t => {
-    if (activeFilter.value !== 'all' && t.status !== activeFilter.value) return false
+    // Filter by tab
+    if (activeFilter.value === 'active') {
+      if (t.status === 'done') return false
+    } else if (activeFilter.value !== 'all') {
+      if (t.status !== activeFilter.value) return false
+    }
+    // Search
     if (q && !t.name.toLowerCase().includes(q) && !(t.desc || '').toLowerCase().includes(q)) return false
     return true
   })
 
-  switch (sortBy.value) {
-    case 'order':
-      list = list.sort((a,b) => (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999))
-      break
-    case 'progress_desc':
-      list = list.sort((a,b) => b.progress - a.progress)
-      break
-    case 'progress_asc':
-      list = list.sort((a,b) => a.progress - b.progress)
-      break
-    case 'deadline':
-      list = list.sort((a,b) => {
-        if (!a.target) return 1; if (!b.target) return -1
-        return new Date(a.target) - new Date(b.target)
-      })
-      break
-    case 'name':
-      list = list.sort((a,b) => a.name.localeCompare(b.name))
-      break
-    case 'priority':
-      list = list.sort((a,b) => (PRIORITY_ORDER[a.priority] ?? 1) - (PRIORITY_ORDER[b.priority] ?? 1))
-      break
+  // Sort
+  const dir = sortDir.value === 'asc' ? 1 : -1
+  list = [...list].sort((a, b) => {
+    if (sortBy.value === 'name') {
+      return dir * a.name.localeCompare(b.name)
+    }
+    if (sortBy.value === 'priority') {
+      const pa = PRIORITY_ORDER[a.priority] ?? 1
+      const pb = PRIORITY_ORDER[b.priority] ?? 1
+      if (pa !== pb) return dir * (pa - pb)
+      // secondary: sort order
+      return (a.sortOrder ?? 9999) - (b.sortOrder ?? 9999)
+    }
+    if (sortBy.value === 'deadline') {
+      const da = a.target ? new Date(a.target).getTime() : (dir > 0 ? Infinity : -Infinity)
+      const db = b.target ? new Date(b.target).getTime() : (dir > 0 ? Infinity : -Infinity)
+      return dir * (da - db)
+    }
+    return 0
+  })
+
+  // Task done selalu di akhir (kecuali filter done aktif)
+  if (activeFilter.value !== 'done') {
+    list.sort((a, b) => {
+      if (a.status === 'done' && b.status !== 'done') return 1
+      if (a.status !== 'done' && b.status === 'done') return -1
+      return 0
+    })
   }
+
   return list
 })
 
 function setFilter(f) {
   activeFilter.value = f
-  router.replace({ query: f !== 'all' ? { status: f } : {} })
+  const statusMap = { active: undefined, todo: 'todo', progress: 'progress', paused: 'paused', done: 'done' }
+  const q = statusMap[f]
+  router.replace({ query: q ? { status: q } : {} })
 }
 
 function openAdd()  { editTarget.value = null; showForm.value = true }
@@ -162,16 +210,10 @@ onMounted(() => { if (!store.tasks.length) store.loadAll() })
 </script>
 
 <style scoped>
-/* Filter bar: 2 row layout */
-.filter-bar {
-  display: flex; flex-direction: column; gap: 10px;
-  margin-bottom: 20px;
-}
+.filter-bar { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
 
-/* Row 1: filter tabs */
-.filter-tabs {
-  display: flex; gap: 6px; flex-wrap: wrap;
-}
+/* Row 1: status tabs */
+.filter-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
 .filter-btn {
   display: flex; align-items: center; gap: 5px;
   padding: 6px 12px; border-radius: 99px;
@@ -188,21 +230,32 @@ onMounted(() => { if (!store.tasks.length) store.loadAll() })
 }
 .filter-btn:not(.active) .filter-count { background: var(--surface2); color: var(--muted); }
 
-/* Row 2: sort + search */
-.filter-controls {
-  display: flex; gap: 8px; align-items: center;
+/* Row 2: sort bar */
+.sort-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
 }
-.sort-select {
-  background: var(--surface); border: 1px solid var(--border);
-  color: var(--text); font-size: 0.78rem; font-weight: 600;
-  padding: 7px 10px; border-radius: var(--radius); outline: none;
-  cursor: pointer; font-family: var(--font-body); transition: border-color 0.15s;
-  flex-shrink: 0;
+.sort-label {
+  font-size: 0.72rem; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0;
 }
-.sort-select:focus { border-color: var(--accent); }
+.sort-group { display: flex; gap: 4px; }
+.sort-btn {
+  display: flex; align-items: center; gap: 3px;
+  padding: 5px 10px; border-radius: var(--radius);
+  font-size: 0.75rem; font-weight: 700;
+  border: 1px solid var(--border); background: transparent; color: var(--text2);
+  transition: all 0.15s; cursor: pointer;
+}
+.sort-btn.active {
+  background: var(--surface2); color: var(--text);
+  border-color: var(--border2);
+}
+.sort-btn:hover:not(.active) { border-color: var(--border2); color: var(--text); }
+.sort-dir { font-size: 0.8rem; font-weight: 900; }
 
 .search-input {
-  flex: 1; background: var(--surface); border: 1px solid var(--border);
+  flex: 1; min-width: 140px;
+  background: var(--surface); border: 1px solid var(--border);
   color: var(--text); font-size: 0.82rem; padding: 7px 14px;
   border-radius: var(--radius); outline: none;
   transition: border-color 0.18s; font-family: var(--font-body);
@@ -213,8 +266,9 @@ onMounted(() => { if (!store.tasks.length) store.loadAll() })
 .task-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
 
 @media (max-width: 600px) {
-  .filter-controls { flex-direction: column; align-items: stretch; }
-  .sort-select { width: 100%; }
+  .sort-bar { flex-direction: column; align-items: stretch; }
+  .sort-group { flex-wrap: wrap; }
+  .search-input { width: 100%; }
   .task-grid { grid-template-columns: 1fr; }
 }
 </style>
