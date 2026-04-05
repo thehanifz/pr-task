@@ -1,80 +1,76 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { getStoredToken, storeToken, clearToken, getAccessToken, oauthLogout, fetchUserInfo } from '@/services/googleOAuth'
 
-const LS_KEY     = 'prtm_config'
-const LS_LOCK    = 'prtm_lockout'
-const SS_KEY     = 'prtm_unlocked'
+const LS_KEY      = 'prtm_config'
+const LS_LOCKOUT  = 'prtm_lockout'
+const SS_KEY      = 'prtm_unlocked'
 
-// Konstanta proteksi PIN
 const MAX_ATTEMPTS  = 3
 const LOCKOUT_MS    = 15 * 60 * 1000  // 15 menit
 
 export const useAuthStore = defineStore('auth', () => {
+  // ── State ──────────────────────────────────
   const config     = ref(loadConfig())
   const isUnlocked = ref(sessionStorage.getItem(SS_KEY) === '1')
 
   // ── Getters ────────────────────────────────
-  const isConfigured  = computed(() => !!config.value?.pinHash)
-  const sheetId       = computed(() => config.value?.sheetId || '')
-  const webhookUrl    = computed(() => config.value?.webhookUrl || '')
-  const userName      = computed(() => config.value?.name || 'User')
+  const isConfigured = computed(() => !!config.value?.pinHash)
+  const sheetId      = computed(() => config.value?.sheetId || '')
+  const webhookUrl   = computed(() => config.value?.webhookUrl || '')
+  const userName     = computed(() => config.value?.name || 'User')
 
-  // Info akun Google dari stored OAuth token
-  const googleEmail   = computed(() => getStoredToken()?.email || '')
-  const googleName    = computed(() => getStoredToken()?.name  || '')
-  const googlePicture = computed(() => getStoredToken()?.picture || '')
-  const isOAuthReady  = computed(() => !!getStoredToken()?.access_token)
-
-  // ── PIN Lockout ─────────────────────────────
-  function getLockout() {
-    try { return JSON.parse(localStorage.getItem(LS_LOCK)) || { attempts: 0, lockedUntil: null } }
+  // ── PIN Lockout Helpers ────────────────────
+  function loadLockout() {
+    try { return JSON.parse(localStorage.getItem(LS_LOCKOUT)) || { attempts: 0, lockedUntil: null } }
     catch { return { attempts: 0, lockedUntil: null } }
   }
 
   function saveLockout(data) {
-    localStorage.setItem(LS_LOCK, JSON.stringify(data))
+    localStorage.setItem(LS_LOCKOUT, JSON.stringify(data))
   }
 
-  function resetLockout() {
-    localStorage.removeItem(LS_LOCK)
-  }
-
-  // Kembalikan sisa menit/detik lockout, null jika tidak locked
+  /**
+   * Kembalikan sisa ms lockout, atau null jika tidak terkunci.
+   */
   function getLockoutRemaining() {
-    const lock = getLockout()
+    const lock = loadLockout()
     if (!lock.lockedUntil) return null
     const remaining = lock.lockedUntil - Date.now()
-    if (remaining <= 0) { resetLockout(); return null }
+    if (remaining <= 0) {
+      // Lockout sudah berakhir, reset
+      saveLockout({ attempts: 0, lockedUntil: null })
+      return null
+    }
     return remaining
   }
 
   // ── Actions ────────────────────────────────
   async function verifyPin(pin) {
-    // Cek apakah sedang locked
+    // Cek lockout dulu
     const remaining = getLockoutRemaining()
     if (remaining !== null) {
-      const mins = Math.ceil(remaining / 60_000)
-      throw new Error(`Terlalu banyak percobaan. Coba lagi dalam ${mins} menit.`)
+      const m = Math.ceil(remaining / 60000)
+      throw new Error(`Terlalu banyak percobaan. Coba lagi dalam ${m} menit.`)
     }
 
     const hash = await sha256(pin)
     if (hash === config.value?.pinHash) {
-      resetLockout()
+      // PIN benar — reset counter
+      saveLockout({ attempts: 0, lockedUntil: null })
       isUnlocked.value = true
       sessionStorage.setItem(SS_KEY, '1')
       return true
     }
 
     // PIN salah — increment counter
-    const lock = getLockout()
+    const lock = loadLockout()
     lock.attempts = (lock.attempts || 0) + 1
 
     if (lock.attempts >= MAX_ATTEMPTS) {
       lock.lockedUntil = Date.now() + LOCKOUT_MS
       lock.attempts    = 0
       saveLockout(lock)
-      throw new Error(`PIN salah ${MAX_ATTEMPTS}x. Tunggu 15 menit sebelum mencoba lagi.`)
+      throw new Error(`PIN salah ${MAX_ATTEMPTS}x. Terkunci selama 15 menit.`)
     }
 
     saveLockout(lock)
@@ -89,46 +85,37 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function saveConfig({ name, pin, sheetId, webhookUrl }) {
     const newCfg = {
-      name:       name       ?? config.value?.name,
-      sheetId:    sheetId    ?? config.value?.sheetId,
-      webhookUrl: webhookUrl ?? config.value?.webhookUrl,
+      name:       name       !== undefined ? name       : config.value?.name,
+      sheetId:    sheetId    !== undefined ? sheetId    : config.value?.sheetId,
+      webhookUrl: webhookUrl !== undefined ? webhookUrl : config.value?.webhookUrl,
       pinHash:    config.value?.pinHash
     }
-    if (pin) newCfg.pinHash = await sha256(pin)
+    if (pin) {
+      newCfg.pinHash = await sha256(pin)
+    }
     config.value = newCfg
     persistConfig(newCfg)
   }
 
   async function changePin(newPin) {
-    config.value.pinHash = await sha256(newPin)
+    const hash = await sha256(newPin)
+    config.value.pinHash = hash
     persistConfig(config.value)
   }
 
   function resetConfig() {
     localStorage.removeItem(LS_KEY)
+    localStorage.removeItem(LS_LOCKOUT)
     sessionStorage.removeItem(SS_KEY)
-    resetLockout()
-    oauthLogout()
     config.value     = {}
     isUnlocked.value = false
-  }
-
-  // Simpan token OAuth setelah callback berhasil
-  function setOAuthToken(token) {
-    storeToken(token)
-    // Update nama jika belum ada di config
-    if (token.name && !config.value?.name) {
-      config.value = { ...config.value, name: token.name }
-      persistConfig(config.value)
-    }
   }
 
   return {
     config, isUnlocked, isConfigured,
     sheetId, webhookUrl, userName,
-    googleEmail, googleName, googlePicture, isOAuthReady,
-    getLockoutRemaining, getLockout,
-    verifyPin, lock, saveConfig, changePin, resetConfig, setOAuthToken
+    getLockoutRemaining,
+    verifyPin, lock, saveConfig, changePin, resetConfig
   }
 })
 
