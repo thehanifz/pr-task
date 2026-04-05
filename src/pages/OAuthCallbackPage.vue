@@ -49,10 +49,11 @@ onMounted(async () => {
   }
 
   try {
-    const token = await handleOAuthCallback(code, state)
-    auth.setOAuthToken(token)
+    await handleOAuthCallback(code, state)
     loading.value = false
-    // Redirect: kalau sudah configured → lock, kalau belum → setup
+    // Login berhasil:
+    // - Belum configured (setup pertama) → /setup
+    // - Sudah configured → /lock
     setTimeout(() => {
       router.push(auth.isConfigured ? '/lock' : '/setup')
     }, 800)
@@ -63,18 +64,27 @@ onMounted(async () => {
 })
 
 function retry() {
-  router.push('/setup')
+  router.push('/login')
 }
 </script>
 
 <style scoped>
 .callback-wrap {
-  min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  background: var(--bg); padding: 24px;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  padding: 24px;
 }
 .callback-box {
-  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
-  padding: 40px 32px; max-width: 360px; width: 100%; text-align: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 40px 32px;
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
 }
 .setup-logo { font-size: 1.6rem; font-weight: 800; margin-bottom: 24px; }
 .setup-logo span { color: var(--accent); }
@@ -83,8 +93,10 @@ function retry() {
 .cb-msg   { font-size: 0.88rem; color: var(--text2); }
 .cb-err   { color: var(--red); }
 .spinner {
-  width: 36px; height: 36px; border: 3px solid var(--border2);
-  border-top-color: var(--accent); border-radius: 50%;
+  width: 36px; height: 36px;
+  border: 3px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
