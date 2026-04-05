@@ -85,7 +85,6 @@ const gRef     = ref(null)
 const wrapRef  = ref(null)
 const renameInput = ref(null)
 
-// Deteksi touch device
 const isTouchDevice = computed(() => window.matchMedia('(hover: none)').matches)
 
 const popup = reactive({
@@ -109,6 +108,33 @@ const NODE_RX = 8
 
 let svg, g, zoom
 
+// ── Smooth-step path generator ───────────────────
+// Garis horizontal → patah 90° dengan sudut membulat (radius r)
+function smoothStepPath(source, target, r = 10) {
+  const sx = source.y  // d3.tree horizontal layout: x↔y dibalik
+  const sy = source.x
+  const tx = target.y
+  const ty = target.x
+  const mx = (sx + tx) / 2  // titik tengah horizontal
+
+  // Kalau lurus (sy === ty), pakai garis biasa
+  if (Math.abs(sy - ty) < 1) {
+    return `M${sx},${sy} H${tx}`
+  }
+
+  const dy = ty > sy ? 1 : -1  // arah vertikal
+  const cr = Math.min(r, Math.abs(ty - sy) / 2, Math.abs(tx - mx) / 2)
+
+  return [
+    `M${sx},${sy}`,
+    `H${mx - cr}`,
+    `Q${mx},${sy} ${mx},${sy + dy * cr}`,
+    `V${ty - dy * cr}`,
+    `Q${mx},${ty} ${mx + cr},${ty}`,
+    `H${tx}`
+  ].join(' ')
+}
+
 // ── Drag popup state ─────────────────────────────
 let dragState = null
 
@@ -123,7 +149,6 @@ function startDrag(e) {
     const rect = wrapRef.value.getBoundingClientRect()
     let nx = ev.clientX - rect.left - dragState.startX + popup.x
     let ny = ev.clientY - rect.top  - dragState.startY + popup.y
-    // clamp
     nx = Math.max(0, Math.min(nx, rect.width  - 220))
     ny = Math.max(0, Math.min(ny, rect.height - 50))
     popup.x = nx
@@ -219,7 +244,6 @@ function openPopup(event, d) {
   openPopupAt(event.clientX, event.clientY, d)
 }
 
-// closePopup selalu auto-save nama terlebih dahulu
 function closePopup() {
   const name = popup.nameVal.trim()
   if (name && popup.nodeId) {
@@ -267,16 +291,17 @@ function render() {
   const gEl = d3.select(gRef.value)
   gEl.selectAll('*').remove()
 
-  // Links
+  // Links — smooth step
   gEl.selectAll('.link')
     .data(links)
     .enter()
     .append('path')
     .attr('class', 'link')
     .attr('fill', 'none')
-    .attr('stroke', 'rgba(255,255,255,0.12)')
+    .attr('stroke', 'rgba(255,255,255,0.15)')
     .attr('stroke-width', 1.5)
-    .attr('d', d3.linkHorizontal().x(d => d.y).y(d => d.x))
+    .attr('stroke-linecap', 'round')
+    .attr('d', d => smoothStepPath(d.source, d.target, 12))
 
   // Node groups
   const nodeG = gEl.selectAll('.node')
@@ -474,7 +499,6 @@ onMounted(() => {
   render()
   nextTick(() => fitView())
 
-  // Tutup popup saat klik/tap di luar → auto-save nama
   const handleOutsideClick = (e) => {
     if (popup.show && !e.target.closest('.node-popup')) {
       closePopup()
@@ -511,7 +535,6 @@ watch(() => JSON.stringify(store.tree), () => {
   display: block;
 }
 
-/* Touch hint */
 .touch-hint {
   position: absolute;
   bottom: 10px;
@@ -538,7 +561,6 @@ watch(() => JSON.stringify(store.tree), () => {
   min-width: 220px;
   box-shadow: 0 8px 32px rgba(0,0,0,0.55);
   animation: popupIn 0.12s ease;
-  /* Prevent popup from being dragged as text selection */
   user-select: none;
 }
 @keyframes popupIn {
@@ -546,7 +568,6 @@ watch(() => JSON.stringify(store.tree), () => {
   to   { opacity: 1; transform: none; }
 }
 
-/* ── Compact on mobile ───────────────────── */
 @media (max-width: 480px) {
   .node-popup {
     width: min(90vw, 210px);
@@ -620,7 +641,6 @@ watch(() => JSON.stringify(store.tree), () => {
   margin-bottom: 6px;
 }
 
-/* Rename row */
 .rename-row {
   display: flex;
   gap: 6px;
@@ -635,7 +655,6 @@ watch(() => JSON.stringify(store.tree), () => {
   color: var(--text, #e2e8f0);
   outline: none;
   transition: border-color 0.15s;
-  /* Prevent iOS auto-zoom on focus */
   font-size: max(16px, 0.85rem);
   user-select: text;
 }
@@ -663,7 +682,6 @@ watch(() => JSON.stringify(store.tree), () => {
   margin: 8px 0;
 }
 
-/* Color swatches */
 .color-swatches {
   display: flex;
   flex-wrap: wrap;
@@ -681,7 +699,6 @@ watch(() => JSON.stringify(store.tree), () => {
 .swatch:hover  { transform: scale(1.2); border-color: rgba(255,255,255,0.4); }
 .swatch.active { border-color: #fff; transform: scale(1.15); }
 
-/* Touch tablet (non-mobile): swatch lebih besar */
 @media (hover: none) and (min-width: 481px) {
   .swatch { width: 36px; height: 36px; border-radius: 8px; }
 }
