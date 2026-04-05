@@ -7,6 +7,28 @@
 import { getAccessToken } from './googleOAuth'
 
 // =============================================
+// Sheet configs (nama + header kolom)
+// =============================================
+const SHEETS_CONFIG = {
+  tasks: {
+    name: 'tasks',
+    header: ['id', 'name', 'desc', 'cat', 'priority', 'start', 'target', 'status', 'progress', 'doneDate', 'sortOrder']
+  },
+  daily_log: {
+    name: 'daily_log',
+    header: ['id', 'taskId', 'date', 'note', 'progress']
+  },
+  reminders: {
+    name: 'reminders',
+    header: ['id', 'taskId', 'type', 'sendAt', 'message', 'sent', 'webhookUrl', 'recurring', 'recurringType', 'recurringDays', 'recurringTime', 'recurringEnd']
+  },
+  tree_nodes: {
+    name: 'tree_nodes',
+    header: ['id', 'name', 'color', 'parentId', 'collapsed', 'order', 'updatedAt']
+  }
+}
+
+// =============================================
 // Base API calls
 // =============================================
 async function apiGet(sheetId, range) {
@@ -87,9 +109,57 @@ async function apiDeleteRow(sheetId, sheetName, rowIndex) {
 }
 
 // =============================================
-// Batch load semua data
+// Auto-create semua sheet yang dibutuhkan
+// Dipanggil sebelum loadAllData atau operasi CRUD
+// =============================================
+export async function ensureAllSheets(sheetId) {
+  const tok = await getAccessToken()
+
+  // Ambil daftar sheet yang sudah ada
+  const metaRes = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties`,
+    { headers: { Authorization: `Bearer ${tok}` } }
+  )
+  if (!metaRes.ok) {
+    const err = await metaRes.json().catch(() => ({}))
+    throw new Error(err.error?.message || 'Tidak bisa membaca metadata spreadsheet')
+  }
+  const meta = await metaRes.json()
+  const existingNames = (meta.sheets || []).map(s => s.properties.title)
+
+  // Buat sheet yang belum ada
+  const toCreate = Object.values(SHEETS_CONFIG).filter(cfg => !existingNames.includes(cfg.name))
+  if (toCreate.length > 0) {
+    const requests = toCreate.map(cfg => ({
+      addSheet: { properties: { title: cfg.name } }
+    }))
+    const createRes = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}:batchUpdate`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tok}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests })
+      }
+    )
+    if (!createRes.ok) {
+      const err = await createRes.json().catch(() => ({}))
+      throw new Error(err.error?.message || 'Gagal membuat sheet')
+    }
+  }
+
+  // Pasang header pada sheet yang baru dibuat
+  for (const cfg of toCreate) {
+    const colLetter = String.fromCharCode(64 + cfg.header.length) // A=65
+    await apiUpdate(sheetId, `${cfg.name}!A1:${colLetter}1`, [cfg.header])
+  }
+}
+
+// =============================================
+// Batch load semua data (dengan auto-create sheet)
 // =============================================
 export async function loadAllData(sheetId) {
+  await ensureAllSheets(sheetId)
+
   const tok = await getAccessToken()
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values:batchGet?ranges=tasks!A:K&ranges=daily_log!A:E&ranges=reminders!A:L`
   const res = await fetch(url, { headers: { Authorization: `Bearer ${tok}` } })
@@ -311,19 +381,19 @@ export function rowsToTree(rows) {
   return root
 }
 
-async function getTreeSheetNumericId(sheetId, tok) {
+async function getNumericSheetId(sheetId, sheetName, tok) {
   const metaRes = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties`,
     { headers: { Authorization: `Bearer ${tok}` } }
   )
   const meta = await metaRes.json()
-  const found = meta.sheets?.find(s => s.properties.title === TREE_SHEET)
+  const found = meta.sheets?.find(s => s.properties.title === sheetName)
   return found ? found.properties.sheetId : null
 }
 
 async function ensureTreeSheet(sheetId) {
   const tok   = await getAccessToken()
-  const numId = await getTreeSheetNumericId(sheetId, tok)
+  const numId = await getNumericSheetId(sheetId, TREE_SHEET, tok)
   if (numId !== null) return
   const createRes = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}:batchUpdate`,
@@ -342,7 +412,7 @@ async function ensureTreeSheet(sheetId) {
 
 async function clearTreeData(sheetId) {
   const tok   = await getAccessToken()
-  const numId = await getTreeSheetNumericId(sheetId, tok)
+  const numId = await getNumericSheetId(sheetId, TREE_SHEET, tok)
   if (numId === null) return
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}:batchUpdate`
   const res = await fetch(url, {
