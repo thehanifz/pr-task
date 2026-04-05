@@ -3,6 +3,7 @@ dist/
 .env
 .env.local
 .env.production
+.qwen/
 
 # PENTING: jangan commit credentials
 credential.json
@@ -10,3 +11,4 @@ credential.json
 
 # User config — hanya ada di VPS, tidak di-commit
 src/user/data.js
+server/data/users.json
