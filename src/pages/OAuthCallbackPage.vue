@@ -4,7 +4,7 @@
       <div class="setup-logo">PR<span>.</span>Tasks</div>
       <div v-if="loading" class="cb-state">
         <div class="spinner"></div>
-        <div class="cb-msg">Memproses login Google...</div>
+        <div class="cb-msg">{{ loadingMsg }}</div>
       </div>
       <div v-else-if="error" class="cb-state">
         <div class="cb-icon">❌</div>
@@ -14,6 +14,7 @@
       <div v-else class="cb-state">
         <div class="cb-icon">✅</div>
         <div class="cb-msg">Login berhasil! Mengarahkan...</div>
+        <div v-if="syncMsg" class="cb-sync">{{ syncMsg }}</div>
       </div>
     </div>
   </div>
@@ -21,14 +22,16 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
+import { useRouter }      from 'vue-router'
+import { useAuthStore }   from '@/stores/auth'
 import { handleOAuthCallback } from '@/services/googleOAuth'
 
-const router  = useRouter()
-const auth    = useAuthStore()
-const loading = ref(true)
-const error   = ref('')
+const router     = useRouter()
+const auth       = useAuthStore()
+const loading    = ref(true)
+const error      = ref('')
+const loadingMsg = ref('Memproses login Google...')
+const syncMsg    = ref('')
 
 onMounted(async () => {
   const params = new URLSearchParams(window.location.search)
@@ -41,7 +44,6 @@ onMounted(async () => {
     error.value   = 'Login dibatalkan: ' + err
     return
   }
-
   if (!code || !state) {
     loading.value = false
     error.value   = 'Parameter tidak lengkap. Coba login ulang.'
@@ -49,14 +51,31 @@ onMounted(async () => {
   }
 
   try {
+    // 1. Tukar code → token OAuth
     await handleOAuthCallback(code, state)
+
+    // 2. Pull config dari server (cross-browser sync)
+    loadingMsg.value = 'Sinkronisasi config dari server...'
+    const result = await auth.pullConfigFromServer()
+
     loading.value = false
-    // Login berhasil:
-    // - Belum configured (setup pertama) → /setup
-    // - Sudah configured → /lock
+
+    if (result.pulled) {
+      syncMsg.value = '☁️ Config tersinkron dari server'
+    } else if (result.reason === 'not_found') {
+      syncMsg.value = '🆕 Akun baru — isi pengaturan di halaman setup'
+    }
+    // reason 'no_oauth' tidak mungkin di sini karena baru saja login
+
+    // 3. Redirect sesuai status
     setTimeout(() => {
-      router.push(auth.isConfigured ? '/lock' : '/setup')
-    }, 800)
+      if (!auth.isConfigured) {
+        router.push('/setup')
+      } else {
+        router.push('/lock')
+      }
+    }, 900)
+
   } catch(e) {
     loading.value = false
     error.value   = e.message || 'Gagal login Google'
@@ -92,6 +111,14 @@ function retry() {
 .cb-icon  { font-size: 2.5rem; }
 .cb-msg   { font-size: 0.88rem; color: var(--text2); }
 .cb-err   { color: var(--red); }
+.cb-sync  {
+  font-size: 0.75rem;
+  color: var(--green);
+  background: rgba(16,185,129,0.08);
+  border: 1px solid rgba(16,185,129,0.2);
+  border-radius: 6px;
+  padding: 5px 12px;
+}
 .spinner {
   width: 36px; height: 36px;
   border: 3px solid var(--border2);
