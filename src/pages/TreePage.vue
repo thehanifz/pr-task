@@ -60,6 +60,11 @@
       {{ notif.msg }}
     </div>
 
+    <!-- Auto-load status -->
+    <div v-if="autoLoadStatus" class="notif" :class="autoLoadStatus.type">
+      {{ autoLoadStatus.msg }}
+    </div>
+
     <!-- Tree Canvas -->
     <div class="tree-canvas">
       <TreeDiagram ref="diagram" />
@@ -77,6 +82,10 @@
         >
           {{ treeStore.sheetsMsg }}
         </span>
+        <!-- Auto-save indicator -->
+        <span v-if="autoSaveIndicator" class="chip chip-autosave">
+          {{ autoSaveIndicator }}
+        </span>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="btn-sm" @click="addRootChild">+ Tambah Node Utama</button>
@@ -86,7 +95,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useTreeStore } from '@/stores/tree'
 import TreeDiagram from '@/components/TreeDiagram.vue'
 
@@ -94,6 +103,8 @@ const treeStore = useTreeStore()
 const diagram   = ref(null)
 
 const notif = ref({ show: false, msg: '', type: 'success' })
+const autoLoadStatus  = ref(null)
+const autoSaveIndicator = ref('')
 let notifTimer = null
 
 function showNotif(msg, type = 'success') {
@@ -101,6 +112,43 @@ function showNotif(msg, type = 'success') {
   notif.value = { show: true, msg, type }
   notifTimer = setTimeout(() => { notif.value.show = false }, 3500)
 }
+
+// Watch sheetsStatus untuk update auto-save indicator di bottom bar
+watch(
+  () => treeStore.sheetsStatus,
+  (status) => {
+    if (status === 'saving') {
+      autoSaveIndicator.value = '💾 Saving...'
+    } else if (status === 'ok') {
+      autoSaveIndicator.value = '✅ Saved'
+      setTimeout(() => { autoSaveIndicator.value = '' }, 3000)
+    } else if (status === 'error') {
+      autoSaveIndicator.value = '❌ Save gagal'
+    } else {
+      autoSaveIndicator.value = ''
+    }
+  }
+)
+
+// ── Auto-load saat halaman dibuka ───────────────
+onMounted(async () => {
+  autoLoadStatus.value = { msg: '☁️ Memuat tree dari Google Sheets...', type: 'warning' }
+  const result = await treeStore.loadFromSheets()
+  if (result.ok && !result.empty) {
+    autoLoadStatus.value = { msg: '✅ Tree berhasil dimuat dari Google Sheets', type: 'success' }
+    setTimeout(() => {
+      autoLoadStatus.value = null
+      diagram.value?.fitView()
+    }, 2000)
+  } else if (result.ok && result.empty) {
+    autoLoadStatus.value = null  // sheet kosong, pakai data lokal, tidak perlu notif
+    setTimeout(() => diagram.value?.fitView(), 300)
+  } else {
+    // Gagal load (no sheetId atau error network) → pakai localStorage diam-diam
+    autoLoadStatus.value = null
+    setTimeout(() => diagram.value?.fitView(), 300)
+  }
+})
 
 // Count nodes/links recursively
 function countNodes(node) {
@@ -325,6 +373,7 @@ function exportPNG() {
 .chip-sheets.error   { background: rgba(239,68,68,0.12);  color: #ef4444; }
 .chip-sheets.loading,
 .chip-sheets.saving  { background: rgba(245,158,11,0.12); color: #f59e0b; }
+.chip-autosave       { background: rgba(99,102,241,0.12); color: #818cf8; }
 
 .btn-sm {
   padding: 6px 12px;

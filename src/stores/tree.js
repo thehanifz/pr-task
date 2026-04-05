@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import { useAuthStore } from './auth'
 import { saveTree, loadTree } from '@/services/googleSheets'
 
@@ -56,6 +56,41 @@ export const useTreeStore = defineStore('tree', () => {
 
   const sheetsStatus  = ref('idle')
   const sheetsMsg     = ref('')
+
+  // ── Auto-save debounce timer ─────────────────
+  let autoSaveTimer = null
+  let isLoading = false  // flag agar auto-save tidak jalan saat load sedang berlangsung
+
+  // Watch tree → debounce 2 detik → auto save ke localStorage + Sheets
+  watch(
+    tree,
+    () => {
+      if (isLoading) return
+      saveToStorage(tree.value)
+
+      // Auto-save ke Sheets hanya jika sheetId tersedia
+      if (!auth.sheetId) return
+
+      clearTimeout(autoSaveTimer)
+      sheetsStatus.value = 'saving'
+      sheetsMsg.value    = '...auto-saving'
+      autoSaveTimer = setTimeout(async () => {
+        try {
+          await saveTree(tree.value, auth.sheetId)
+          sheetsStatus.value = 'ok'
+          sheetsMsg.value    = '✅ Auto-saved'
+          // Reset status setelah 3 detik
+          setTimeout(() => {
+            if (sheetsStatus.value === 'ok') sheetsStatus.value = 'idle'
+          }, 3000)
+        } catch (e) {
+          sheetsStatus.value = 'error'
+          sheetsMsg.value    = '❌ Auto-save gagal'
+        }
+      }, 2000)
+    },
+    { deep: true }
+  )
 
   function save() { saveToStorage(tree.value) }
 
@@ -137,13 +172,14 @@ export const useTreeStore = defineStore('tree', () => {
     }
   }
 
-  // ── Google Sheets sync ──────────────────────
+  // ── Google Sheets manual save ────────────────
   async function saveToSheets() {
     if (!auth.sheetId) {
       sheetsStatus.value = 'error'
       sheetsMsg.value    = 'Sheet ID belum diisi di Settings'
       return { ok: false, error: sheetsMsg.value }
     }
+    clearTimeout(autoSaveTimer)  // batalkan pending auto-save
     sheetsStatus.value = 'saving'
     sheetsMsg.value    = 'Menyimpan ke Sheets...'
     try {
@@ -158,31 +194,38 @@ export const useTreeStore = defineStore('tree', () => {
     }
   }
 
+  // ── Google Sheets load (manual + auto-load) ──
   async function loadFromSheets() {
     if (!auth.sheetId) {
       sheetsStatus.value = 'error'
       sheetsMsg.value    = 'Sheet ID belum diisi di Settings'
       return { ok: false, error: sheetsMsg.value }
     }
+    isLoading = true
     sheetsStatus.value = 'loading'
     sheetsMsg.value    = 'Memuat dari Sheets...'
     try {
       const loaded = await loadTree(auth.sheetId)
       if (loaded) {
         tree.value = loaded
-        save()
+        saveToStorage(loaded)
         sheetsStatus.value = 'ok'
         sheetsMsg.value    = '✅ Tree dimuat dari Google Sheets'
+        setTimeout(() => {
+          if (sheetsStatus.value === 'ok') sheetsStatus.value = 'idle'
+        }, 3000)
         return { ok: true }
       } else {
-        sheetsStatus.value = 'ok'
-        sheetsMsg.value    = 'Sheet kosong, tree tidak berubah'
+        sheetsStatus.value = 'idle'
+        sheetsMsg.value    = ''
         return { ok: true, empty: true }
       }
     } catch (e) {
       sheetsStatus.value = 'error'
       sheetsMsg.value    = e.message || 'Gagal memuat'
       return { ok: false, error: sheetsMsg.value }
+    } finally {
+      isLoading = false
     }
   }
 
