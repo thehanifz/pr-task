@@ -102,27 +102,24 @@ const swatches = [
   '#14b8a6','#a855f7','#e11d48','#0ea5e9','#ffffff'
 ]
 
-const NODE_W  = 140
-const NODE_H  = 36
-const NODE_RX = 8
+const NODE_W   = 140
+const NODE_H   = 36
+const NODE_RX  = 8
+const NODE_BG  = '#0f1117'   // warna bg SVG — harus sama dengan --bg
 
 let svg, g, zoom
 
 // ── Smooth-step path generator ───────────────────
-// Garis horizontal → patah 90° dengan sudut membulat (radius r)
 function smoothStepPath(source, target, r = 10) {
-  const sx = source.y  // d3.tree horizontal layout: x↔y dibalik
+  const sx = source.y
   const sy = source.x
   const tx = target.y
   const ty = target.x
-  const mx = (sx + tx) / 2  // titik tengah horizontal
+  const mx = (sx + tx) / 2
 
-  // Kalau lurus (sy === ty), pakai garis biasa
-  if (Math.abs(sy - ty) < 1) {
-    return `M${sx},${sy} H${tx}`
-  }
+  if (Math.abs(sy - ty) < 1) return `M${sx},${sy} H${tx}`
 
-  const dy = ty > sy ? 1 : -1  // arah vertikal
+  const dy = ty > sy ? 1 : -1
   const cr = Math.min(r, Math.abs(ty - sy) / 2, Math.abs(tx - mx) / 2)
 
   return [
@@ -140,10 +137,7 @@ let dragState = null
 
 function startDrag(e) {
   if (e.button !== 0) return
-  dragState = {
-    startX: e.clientX - popup.x,
-    startY: e.clientY - popup.y
-  }
+  dragState = { startX: e.clientX - popup.x, startY: e.clientY - popup.y }
   const onMove = (ev) => {
     if (!dragState) return
     const rect = wrapRef.value.getBoundingClientRect()
@@ -151,8 +145,7 @@ function startDrag(e) {
     let ny = ev.clientY - rect.top  - dragState.startY + popup.y
     nx = Math.max(0, Math.min(nx, rect.width  - 220))
     ny = Math.max(0, Math.min(ny, rect.height - 50))
-    popup.x = nx
-    popup.y = ny
+    popup.x = nx; popup.y = ny
   }
   const onUp = () => {
     dragState = null
@@ -172,14 +165,12 @@ function startDragTouch(e) {
   }
   const onMove = (ev) => {
     if (!dragState) return
-    const t   = ev.touches[0]
-    const r   = wrapRef.value.getBoundingClientRect()
+    const t = ev.touches[0], r = wrapRef.value.getBoundingClientRect()
     let nx = t.clientX - r.left - dragState.startX
     let ny = t.clientY - r.top  - dragState.startY
     nx = Math.max(0, Math.min(nx, r.width  - 220))
     ny = Math.max(0, Math.min(ny, r.height - 50))
-    popup.x = nx
-    popup.y = ny
+    popup.x = nx; popup.y = ny
   }
   const onEnd = () => {
     dragState = null
@@ -204,67 +195,49 @@ function startLongPress(event, d) {
 }
 
 function cancelLongPress() {
-  if (longPressTimer) {
-    clearTimeout(longPressTimer)
-    longPressTimer = null
-  }
+  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null }
 }
 
 function openPopupAt(clientX, clientY, d) {
-  const rect     = wrapRef.value.getBoundingClientRect()
-  const isTouch  = window.matchMedia('(hover: none)').matches
-  const popupW   = isTouch ? 210 : 230
-  const popupH   = isTouch ? 250 : 280
-
+  const rect    = wrapRef.value.getBoundingClientRect()
+  const isTouch = window.matchMedia('(hover: none)').matches
+  const popupW  = isTouch ? 210 : 230
+  const popupH  = isTouch ? 250 : 280
   let x = clientX - rect.left
   let y = clientY - rect.top
-
   if (isTouch) y -= 24
-
   if (x + popupW > rect.width)  x = rect.width  - popupW - 8
   if (y + popupH > rect.height) y = rect.height - popupH - 8
   if (x < 8) x = 8
   if (y < 8) y = 8
-
   popup.show     = true
   popup.nodeId   = d.data.id
   popup.nameVal  = d.data.name
   popup.colorVal = d.data.color || '#3b82f6'
-  popup.x = x
-  popup.y = y
-  nextTick(() => {
-    renameInput.value?.focus()
-    renameInput.value?.select()
-  })
+  popup.x = x; popup.y = y
+  nextTick(() => { renameInput.value?.focus(); renameInput.value?.select() })
 }
 
 function openPopup(event, d) {
-  event.preventDefault()
-  event.stopPropagation()
+  event.preventDefault(); event.stopPropagation()
   openPopupAt(event.clientX, event.clientY, d)
 }
 
 function closePopup() {
   const name = popup.nameVal.trim()
-  if (name && popup.nodeId) {
-    store.updateNodeName(popup.nodeId, name)
-  }
+  if (name && popup.nodeId) store.updateNodeName(popup.nodeId, name)
   popup.show = false
 }
 
 function applyRename() {
   const name = popup.nameVal.trim()
-  if (name && popup.nodeId) {
-    store.updateNodeName(popup.nodeId, name)
-  }
+  if (name && popup.nodeId) store.updateNodeName(popup.nodeId, name)
   popup.show = false
 }
 
 function applyColor(color) {
   popup.colorVal = color
-  if (popup.nodeId) {
-    store.updateNodeColor(popup.nodeId, color)
-  }
+  if (popup.nodeId) store.updateNodeColor(popup.nodeId, color)
 }
 
 function buildD3Tree(data) {
@@ -280,8 +253,11 @@ function render() {
   if (!svgRef.value || !gRef.value) return
   const isTouch = window.matchMedia('(hover: none)').matches
 
-  const root = d3.hierarchy(buildD3Tree(store.tree), d => d.children)
+  // Baca warna bg aktual dari CSS variable
+  const bgColor = getComputedStyle(document.documentElement)
+    .getPropertyValue('--bg').trim() || NODE_BG
 
+  const root = d3.hierarchy(buildD3Tree(store.tree), d => d.children)
   const treeLayout = d3.tree().nodeSize([NODE_H + 14, NODE_W + 60])
   treeLayout(root)
 
@@ -291,7 +267,7 @@ function render() {
   const gEl = d3.select(gRef.value)
   gEl.selectAll('*').remove()
 
-  // Links — smooth step
+  // ── 1. Links (paling bawah, dirender duluan) ──
   gEl.selectAll('.link')
     .data(links)
     .enter()
@@ -303,7 +279,7 @@ function render() {
     .attr('stroke-linecap', 'round')
     .attr('d', d => smoothStepPath(d.source, d.target, 12))
 
-  // Node groups
+  // ── 2. Node groups (di atas links) ──
   const nodeG = gEl.selectAll('.node')
     .data(nodes)
     .enter()
@@ -312,7 +288,17 @@ function render() {
     .attr('transform', d => `translate(${d.y},${d.x})`)
     .style('cursor', 'pointer')
 
-  // Node rect
+  // Layer 1: rect solid bg — menutup garis di belakang node
+  nodeG.append('rect')
+    .attr('x', -NODE_W / 2)
+    .attr('y', -NODE_H / 2)
+    .attr('width', NODE_W)
+    .attr('height', NODE_H)
+    .attr('rx', NODE_RX)
+    .attr('fill', bgColor)
+    .attr('stroke', 'none')
+
+  // Layer 2: rect warna node (transparan, di atas bg)
   nodeG.append('rect')
     .attr('x', -NODE_W / 2)
     .attr('y', -NODE_H / 2)
@@ -341,7 +327,7 @@ function render() {
     .attr('cy', 0)
     .attr('r', 6)
     .attr('fill', d => d.data.color || '#3b82f6')
-    .attr('stroke', 'var(--bg, #0f1117)')
+    .attr('stroke', bgColor)
     .attr('stroke-width', 2)
 
   nodeG.filter(d => d.data._children && d.data._children.length > 0)
@@ -376,16 +362,9 @@ function render() {
     .attr('pointer-events', 'none')
     .text('+')
 
-  addBtn.on('click', (event, d) => {
-    event.stopPropagation()
-    store.addChild(d.data.id)
-  })
-
+  addBtn.on('click', (event, d) => { event.stopPropagation(); store.addChild(d.data.id) })
   addBtn.on('touchend', (event, d) => {
-    event.preventDefault()
-    event.stopPropagation()
-    cancelLongPress()
-    store.addChild(d.data.id)
+    event.preventDefault(); event.stopPropagation(); cancelLongPress(); store.addChild(d.data.id)
   })
 
   // ── Delete button (×) — not for root ──────
@@ -411,18 +390,11 @@ function render() {
 
   delBtn.on('click', (event, d) => {
     event.stopPropagation()
-    if (confirm(`Hapus node "${d.data.name}" beserta semua anaknya?`)) {
-      store.deleteNode(d.data.id)
-    }
+    if (confirm(`Hapus node "${d.data.name}" beserta semua anaknya?`)) store.deleteNode(d.data.id)
   })
-
   delBtn.on('touchend', (event, d) => {
-    event.preventDefault()
-    event.stopPropagation()
-    cancelLongPress()
-    if (confirm(`Hapus node "${d.data.name}" beserta semua anaknya?`)) {
-      store.deleteNode(d.data.id)
-    }
+    event.preventDefault(); event.stopPropagation(); cancelLongPress()
+    if (confirm(`Hapus node "${d.data.name}" beserta semua anaknya?`)) store.deleteNode(d.data.id)
   })
 
   // ── Hover show/hide (mouse only) ──────────
@@ -438,19 +410,11 @@ function render() {
       })
   }
 
-  // ── Click = toggle collapse (mouse) ───────
   nodeG.on('click', (event, d) => {
-    if (d.data._children && d.data._children.length > 0) {
-      store.toggleCollapse(d.data.id)
-    }
+    if (d.data._children && d.data._children.length > 0) store.toggleCollapse(d.data.id)
   })
+  nodeG.on('contextmenu', (event, d) => { openPopup(event, d) })
 
-  // ── Right-click = buka popup (mouse) ──────
-  nodeG.on('contextmenu', (event, d) => {
-    openPopup(event, d)
-  })
-
-  // ── Touch: long-press = buka popup, tap = collapse ──
   nodeG
     .on('touchstart', (event, d) => {
       if (event.target.closest('.add-btn') || event.target.closest('.del-btn')) return
@@ -466,14 +430,12 @@ function render() {
         }
       }
     })
-    .on('touchmove', () => {
-      cancelLongPress()
-    })
+    .on('touchmove', () => { cancelLongPress() })
 }
 
 function fitView() {
   if (!svgRef.value || !gRef.value || !zoom) return
-  const svgEl = d3.select(svgRef.value)
+  const svgEl  = d3.select(svgRef.value)
   const bounds = gRef.value.getBBox()
   const w = svgRef.value.clientWidth
   const h = svgRef.value.clientHeight
@@ -500,9 +462,7 @@ onMounted(() => {
   nextTick(() => fitView())
 
   const handleOutsideClick = (e) => {
-    if (popup.show && !e.target.closest('.node-popup')) {
-      closePopup()
-    }
+    if (popup.show && !e.target.closest('.node-popup')) closePopup()
   }
   document.addEventListener('click',      handleOutsideClick)
   document.addEventListener('touchstart', handleOutsideClick)
@@ -514,9 +474,7 @@ onMounted(() => {
   })
 })
 
-watch(() => JSON.stringify(store.tree), () => {
-  render()
-})
+watch(() => JSON.stringify(store.tree), () => { render() })
 </script>
 
 <style scoped>
@@ -570,11 +528,9 @@ watch(() => JSON.stringify(store.tree), () => {
 
 @media (max-width: 480px) {
   .node-popup {
-    width: min(90vw, 210px);
-    min-width: 0;
+    width: min(90vw, 210px); min-width: 0;
     max-width: calc(100vw - 20px);
-    padding: 10px;
-    border-radius: 10px;
+    padding: 10px; border-radius: 10px;
   }
   .popup-header    { margin-bottom: 7px; }
   .popup-title     { font-size: 0.7rem; }
@@ -591,110 +547,50 @@ watch(() => JSON.stringify(store.tree), () => {
 }
 
 .popup-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-  cursor: grab;
-  padding: 2px 0 4px;
-  gap: 6px;
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px; cursor: grab; padding: 2px 0 4px; gap: 6px;
 }
 .popup-header:active { cursor: grabbing; }
-
-.popup-drag-hint {
-  color: var(--muted, #6b7280);
-  font-size: 1rem;
-  line-height: 1;
-  flex-shrink: 0;
-}
-.popup-title {
-  flex: 1;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--text, #e2e8f0);
-}
+.popup-drag-hint { color: var(--muted, #6b7280); font-size: 1rem; line-height: 1; flex-shrink: 0; }
+.popup-title { flex: 1; font-size: 0.75rem; font-weight: 700; color: var(--text, #e2e8f0); }
 .popup-close-x {
-  background: none;
-  border: none;
-  color: var(--muted, #6b7280);
-  font-size: 1.1rem;
-  cursor: pointer;
-  line-height: 1;
-  padding: 4px 6px;
-  min-width: 32px;
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
+  background: none; border: none; color: var(--muted, #6b7280);
+  font-size: 1.1rem; cursor: pointer; line-height: 1; padding: 4px 6px;
+  min-width: 32px; min-height: 32px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .popup-close-x:hover { color: var(--text, #e2e8f0); }
 
 .popup-section { margin-bottom: 10px; }
 .popup-label {
-  display: block;
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--muted, #6b7280);
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  margin-bottom: 6px;
+  display: block; font-size: 0.68rem; font-weight: 700;
+  color: var(--muted, #6b7280); text-transform: uppercase;
+  letter-spacing: 0.07em; margin-bottom: 6px;
 }
 
-.rename-row {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
+.rename-row { display: flex; gap: 6px; align-items: center; }
 .rename-input {
-  flex: 1;
-  padding: 8px 9px;
-  border-radius: 6px;
+  flex: 1; padding: 8px 9px; border-radius: 6px;
   border: 1px solid var(--border, #1e2330);
-  background: var(--bg, #0f1117);
-  color: var(--text, #e2e8f0);
-  outline: none;
-  transition: border-color 0.15s;
-  font-size: max(16px, 0.85rem);
-  user-select: text;
+  background: var(--bg, #0f1117); color: var(--text, #e2e8f0);
+  outline: none; transition: border-color 0.15s;
+  font-size: max(16px, 0.85rem); user-select: text;
 }
 .rename-input:focus { border-color: rgba(59,130,246,0.5); }
 .rename-apply {
-  padding: 8px 12px;
-  min-width: 40px;
-  min-height: 40px;
-  border-radius: 6px;
-  background: rgba(59,130,246,0.15);
-  border: 1px solid rgba(59,130,246,0.3);
-  color: #3b82f6;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: background 0.15s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  padding: 8px 12px; min-width: 40px; min-height: 40px; border-radius: 6px;
+  background: rgba(59,130,246,0.15); border: 1px solid rgba(59,130,246,0.3);
+  color: #3b82f6; font-size: 0.85rem; cursor: pointer; transition: background 0.15s;
+  display: flex; align-items: center; justify-content: center;
 }
 .rename-apply:hover { background: rgba(59,130,246,0.28); }
 
-.popup-divider {
-  height: 1px;
-  background: var(--border, #1e2330);
-  margin: 8px 0;
-}
+.popup-divider { height: 1px; background: var(--border, #1e2330); margin: 8px 0; }
 
-.color-swatches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 8px;
-}
+.color-swatches { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .swatch {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  border: 2px solid transparent;
-  cursor: pointer;
-  transition: transform 0.1s;
+  width: 28px; height: 28px; border-radius: 6px;
+  border: 2px solid transparent; cursor: pointer; transition: transform 0.1s;
 }
 .swatch:hover  { transform: scale(1.2); border-color: rgba(255,255,255,0.4); }
 .swatch.active { border-color: #fff; transform: scale(1.15); }
@@ -704,26 +600,16 @@ watch(() => JSON.stringify(store.tree), () => {
 }
 
 .color-custom {
-  width: 100%;
-  height: 36px;
-  border-radius: 6px;
+  width: 100%; height: 36px; border-radius: 6px;
   border: 1px solid var(--border, #1e2330);
-  background: transparent;
-  cursor: pointer;
+  background: transparent; cursor: pointer;
 }
 
 .popup-close-btn {
-  width: 100%;
-  margin-top: 4px;
-  padding: 10px;
-  min-height: 44px;
-  border-radius: 6px;
-  background: rgba(255,255,255,0.05);
-  border: none;
-  color: var(--text2, #9ca3af);
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition: background 0.15s;
+  width: 100%; margin-top: 4px; padding: 10px; min-height: 44px;
+  border-radius: 6px; background: rgba(255,255,255,0.05);
+  border: none; color: var(--text2, #9ca3af);
+  font-size: 0.8rem; cursor: pointer; transition: background 0.15s;
 }
 .popup-close-btn:hover { background: rgba(255,255,255,0.12); }
 </style>
