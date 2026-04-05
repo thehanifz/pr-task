@@ -8,42 +8,7 @@ const DEFAULT_TREE = {
   name: 'Root Node',
   color: '#3b82f6',
   collapsed: false,
-  children: [
-    {
-      id: 'node-1',
-      name: 'Frontend',
-      color: '#10b981',
-      collapsed: false,
-      children: [
-        { id: 'node-1-1', name: 'Vue Components', color: '#10b981', collapsed: false, children: [] },
-        { id: 'node-1-2', name: 'Styling / CSS', color: '#10b981', collapsed: false, children: [] },
-        { id: 'node-1-3', name: 'State Management', color: '#10b981', collapsed: false, children: [] }
-      ]
-    },
-    {
-      id: 'node-2',
-      name: 'Backend',
-      color: '#f59e0b',
-      collapsed: false,
-      children: [
-        { id: 'node-2-1', name: 'API Routes', color: '#f59e0b', collapsed: false, children: [] },
-        { id: 'node-2-2', name: 'Database', color: '#f59e0b', collapsed: false, children: [
-          { id: 'node-2-2-1', name: 'PostgreSQL', color: '#f59e0b', collapsed: false, children: [] },
-          { id: 'node-2-2-2', name: 'Redis Cache', color: '#f59e0b', collapsed: false, children: [] }
-        ]}
-      ]
-    },
-    {
-      id: 'node-3',
-      name: 'DevOps',
-      color: '#8b5cf6',
-      collapsed: false,
-      children: [
-        { id: 'node-3-1', name: 'Docker', color: '#8b5cf6', collapsed: false, children: [] },
-        { id: 'node-3-2', name: 'CI/CD Pipeline', color: '#8b5cf6', collapsed: false, children: [] }
-      ]
-    }
-  ]
+  children: []
 }
 
 function loadFromStorage() {
