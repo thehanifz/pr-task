@@ -47,6 +47,18 @@
       </div>
     </div>
 
+    <!-- Overall progress bar -->
+    <div v-if="store.totalTasks > 0" class="overall-progress-card card">
+      <div class="overall-progress-header">
+        <span class="overall-progress-label">Progress Keseluruhan</span>
+        <span class="overall-progress-value" :style="{ color: completionColor }">{{ completionRate }}%</span>
+      </div>
+      <div class="overall-progress-bar">
+        <div class="overall-progress-fill" :style="{ width: completionRate + '%', background: completionGradient }"></div>
+      </div>
+      <div class="overall-progress-sub">{{ store.doneCount }} dari {{ store.totalTasks }} task selesai</div>
+    </div>
+
     <!-- Overdue alert banner -->
     <div v-if="overdueCount > 0" class="overdue-alert" @click="$router.push('/tasks')">
       <span class="pulse-dot" />
@@ -221,6 +233,12 @@ const completionColor = computed(() => {
   if (r >= 40) return 'var(--yellow)'
   return 'var(--red)'
 })
+const completionGradient = computed(() => {
+  const r = completionRate.value
+  if (r >= 70) return 'linear-gradient(90deg, #10b981, #34d399)'
+  if (r >= 40) return 'linear-gradient(90deg, #f59e0b, #fbbf24)'
+  return 'linear-gradient(90deg, #ef4444, #f87171)'
+})
 
 const priorityDist = computed(() => {
   const all = activeTasks.value
@@ -322,6 +340,35 @@ onMounted(() => { if (!store.tasks.length) store.loadAll() })
 }
 @keyframes pulse { 0%,100% { opacity:1; transform:scale(1) } 50% { opacity:0.5; transform:scale(1.4) } }
 .alert-arrow { margin-left: auto; font-size: 1rem; }
+
+/* ── Overall progress card ── */
+.overall-progress-card {
+  margin-bottom: 14px; padding: 16px 20px;
+}
+.overall-progress-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 10px;
+}
+.overall-progress-label {
+  font-size: 0.82rem; font-weight: 700; color: var(--text2);
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.overall-progress-value {
+  font-size: 1.2rem; font-weight: 900; font-family: var(--font-mono);
+}
+.overall-progress-bar {
+  height: 12px; background: var(--surface2);
+  border-radius: 99px; overflow: hidden;
+}
+.overall-progress-fill {
+  height: 100%; border-radius: 99px;
+  transition: width 0.6s ease, background 0.3s ease;
+  box-shadow: 0 0 12px rgba(59,130,246,0.3);
+}
+.overall-progress-sub {
+  font-size: 0.72rem; color: var(--muted); margin-top: 6px;
+  font-family: var(--font-mono);
+}
 
 /* ── Charts row ── */
 .charts-row {

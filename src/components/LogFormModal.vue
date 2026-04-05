@@ -8,10 +8,6 @@
       <label class="form-label">Catatan Kegiatan *</label>
       <textarea v-model="form.note" class="form-textarea" placeholder="Apa yang dikerjakan hari ini..." style="min-height:90px" />
     </div>
-    <div class="form-group">
-      <label class="form-label">Update Progres: <span class="mono" style="color:var(--accent)">{{ form.progress }}%</span></label>
-      <input v-model.number="form.progress" type="range" class="slider" min="0" max="100" />
-    </div>
 
     <template #footer>
       <button class="btn btn-secondary" @click="show = false">Batal</button>
@@ -28,7 +24,7 @@ import AppModal from './AppModal.vue'
 import { useTasksStore } from '@/stores/tasks'
 import { useToast } from '@/composables/useToast'
 
-const props = defineProps({ modelValue: Boolean, taskId: String, initialProgress: { type: Number, default: 0 } })
+const props = defineProps({ modelValue: Boolean, taskId: String })
 const emit  = defineEmits(['update:modelValue', 'saved'])
 
 const store  = useTasksStore()
@@ -40,10 +36,10 @@ const show = computed({
   set: (v) => emit('update:modelValue', v)
 })
 
-const form = ref({ date: today(), note: '', progress: 0 })
+const form = ref({ date: today(), note: '' })
 
 watch(() => props.modelValue, (v) => {
-  if (v) form.value = { date: today(), note: '', progress: props.initialProgress }
+  if (v) form.value = { date: today(), note: '' }
 })
 
 async function submit() {

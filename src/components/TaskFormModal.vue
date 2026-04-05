@@ -52,11 +52,6 @@
       </select>
     </div>
 
-    <div class="form-group">
-      <label class="form-label">Progres: <span class="mono" style="color:var(--accent)">{{ form.progress }}%</span></label>
-      <input v-model.number="form.progress" type="range" class="slider" min="0" max="100" />
-    </div>
-
     <template #footer>
       <button class="btn btn-secondary" @click="show = false">Batal</button>
       <button class="btn btn-primary" :disabled="saving" @click="submit">
@@ -88,7 +83,7 @@ const isEdit = computed(() => !!props.task?.id)
 
 const emptyForm = () => ({
   name: '', desc: '', cat: 'dev', priority: 'med',
-  start: today(), target: '', status: 'todo', progress: 0
+  start: today(), target: '', status: 'todo'
 })
 
 const form = ref(emptyForm())
