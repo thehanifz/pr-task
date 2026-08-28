@@ -530,6 +530,9 @@ watch(() => JSON.stringify(store.tree), () => { render() })
   .node-popup {
     width: min(90vw, 210px); min-width: 0;
     max-width: calc(100vw - 20px);
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding: 10px; border-radius: 10px;
   }
   .popup-header    { margin-bottom: 7px; }
@@ -556,7 +559,7 @@ watch(() => JSON.stringify(store.tree), () => { render() })
 .popup-close-x {
   background: none; border: none; color: var(--muted, #6b7280);
   font-size: 1.1rem; cursor: pointer; line-height: 1; padding: 4px 6px;
-  min-width: 32px; min-height: 32px;
+  min-width: 44px; min-height: 44px;
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 .popup-close-x:hover { color: var(--text, #e2e8f0); }

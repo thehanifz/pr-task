@@ -1,7 +1,7 @@
 <template>
   <div class="layout">
     <div class="mobile-topbar">
-      <button class="icon-btn" style="width:36px;height:36px;font-size:1.1rem" @click="sidebarOpen = true">☰</button>
+      <button class="icon-btn mobile-menu-btn" aria-label="Buka menu" @click="sidebarOpen = true">☰</button>
       <span class="logo-text">PR<span style="color:var(--accent)">.</span>Tasks</span>
       <span style="width:36px" />
     </div>
@@ -212,8 +212,10 @@ function lockApp() { auth.lock(); router.push('/lock') }
   .mobile-topbar {
     display: flex; position: fixed; top: 0; left: 0; right: 0; height: 54px;
     background: var(--bg2); border-bottom: 1px solid var(--border);
-    align-items: center; justify-content: space-between; padding: 0 14px; z-index: 90;
+    align-items: center; justify-content: space-between;
+    padding: env(safe-area-inset-top) 14px 0;
+    height: calc(54px + env(safe-area-inset-top)); z-index: 90;
   }
-  .main-content { margin-left: 0; padding: 70px 14px 40px; }
+  .main-content { margin-left: 0; padding: calc(70px + env(safe-area-inset-top)) 14px max(40px, env(safe-area-inset-bottom)); }
 }
 </style>

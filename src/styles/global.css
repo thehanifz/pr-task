@@ -429,3 +429,56 @@ input, select, textarea { font-family: var(--font-body); }
   .page-actions { width: 100%; }
   .btn-full-mobile { width: 100%; justify-content: center; }
 }
+
+
+/* =============================================
+   PWA / TOUCH READINESS
+   ============================================= */
+@media (hover: none), (pointer: coarse) {
+  .icon-btn,
+  .modal-close {
+    width: 44px;
+    height: 44px;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 768px) {
+  .form-input,
+  .form-select,
+  .form-textarea {
+    font-size: 16px;
+  }
+
+  .modal-overlay {
+    align-items: flex-start;
+    padding: max(12px, env(safe-area-inset-top)) 12px
+      max(12px, env(safe-area-inset-bottom));
+  }
+
+  .modal {
+    max-height: calc(100dvh - max(24px, env(safe-area-inset-top) + env(safe-area-inset-bottom)));
+    padding: 20px;
+  }
+
+  .modal-footer {
+    flex-wrap: wrap;
+  }
+
+  .modal-footer > .btn {
+    flex: 1 1 auto;
+  }
+
+  .toast-wrap {
+    left: 12px;
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .toast-item {
+    min-width: 0;
+    width: 100%;
+    max-width: none;
+  }
+}
