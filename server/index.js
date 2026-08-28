@@ -36,10 +36,23 @@ app.use('/api/user', userRoutes)
 
 // ── Serve Vue dist/ ───────────────────────────
 const distPath = path.join(__dirname, '../dist')
+
+// PWA assets must be served as their real files and must never
+// fall through to the SPA index.html fallback.
+app.get('/manifest.webmanifest', (req, res) => {
+  res.type('application/manifest+json')
+  res.sendFile(path.join(distPath, 'manifest.webmanifest'))
+})
+
+app.get('/sw.js', (req, res) => {
+  res.type('application/javascript')
+  res.sendFile(path.join(distPath, 'sw.js'))
+})
+
 app.use(express.static(distPath))
 
-// SPA fallback — semua route non-API ke index.html
-app.get(/^(?!\/api).*/, (req, res) => {
+// SPA fallback — route aplikasi non-API/PWA ke index.html.
+app.get(/^(?!\/api)(?!\/manifest\.webmanifest$)(?!\/sw\.js$).*/, (req, res) => {
   res.sendFile(path.join(distPath, 'index.html'))
 })
 
