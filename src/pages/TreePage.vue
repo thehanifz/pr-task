@@ -6,6 +6,10 @@
         <h1 class="page-title">🌳 Tree Diagram</h1>
         <p class="page-sub">Klik = expand/collapse · Klik kanan = edit nama & warna · Hover = tombol +/×</p>
       </div>
+      <div class="view-switch" role="tablist" aria-label="Tampilan Tree">
+        <button :class="['view-mode-btn', { active: viewMode === 'explorer' }]" type="button" @click="viewMode = 'explorer'">☷ Explorer</button>
+        <button :class="['view-mode-btn', { active: viewMode === 'map' }]" type="button" @click="setMapMode">⌘ Map</button>
+      </div>
       <div class="header-actions">
         <!-- Import JSON -->
         <label class="btn btn-ghost" title="Import JSON">
@@ -63,9 +67,16 @@
       {{ autoLoadStatus.msg }}
     </div>
 
-    <!-- Tree Canvas -->
-    <div class="tree-canvas">
+    <!-- Tree views: same data, two presentations -->
+    <div :class="['tree-canvas', 'map-view', { 'map-active': viewMode === 'map' }]">
       <TreeDiagram ref="diagram" />
+    </div>
+
+    <div :class="['tree-explorer-view', { 'explorer-active': viewMode === 'explorer' }]">
+      <TreeExplorer
+        @map="setMapMode"
+        @notify="showNotif"
+      />
     </div>
 
     <!-- Bottom bar -->
@@ -96,9 +107,11 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useTreeStore } from '@/stores/tree'
 import TreeDiagram from '@/components/TreeDiagram.vue'
+import TreeExplorer from '@/components/TreeExplorer.vue'
 
 const treeStore = useTreeStore()
 const diagram   = ref(null)
+const viewMode = ref('map')
 
 const notif = ref({ show: false, msg: '', type: 'success' })
 const autoLoadStatus  = ref(null)
@@ -109,6 +122,11 @@ function showNotif(msg, type = 'success') {
   clearTimeout(notifTimer)
   notif.value = { show: true, msg, type }
   notifTimer = setTimeout(() => { notif.value.show = false }, 3500)
+}
+
+function setMapMode() {
+  viewMode.value = 'map'
+  $nextTick(() => diagram.value?.fitView())
 }
 
 // Watch sheetsStatus untuk update auto-save indicator di bottom bar
@@ -372,8 +390,56 @@ function exportPNG() {
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 
+
+ .view-switch {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface, #1a2035);
+  border: 1px solid var(--border, #1e2330);
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+.view-mode-btn {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text2);
+  font-size: .72rem;
+  font-weight: 800;
+  cursor: pointer;
+}
+.view-mode-btn.active {
+  background: var(--accent-glow);
+  color: var(--accent);
+  border-color: rgba(59,130,246,.22);
+}
+.tree-canvas, .tree-explorer-view { flex: 1; min-height: 0; min-width: 0; }
+.map-view { display: none; }
+.map-view.map-active { display: block; }
+.tree-explorer-view { display: none; overflow: hidden; }
+.tree-explorer-view.explorer-active { display: block; }
+
+@media (max-width: 768px) {
+  .tree-page { height: calc(100vh - 76px); gap: 8px; min-width: 0; }
+  .page-header { flex-direction: row; align-items: center; gap: 8px; }
+  .page-title { font-size: 1.05rem; }
+  .page-sub { display: none; }
+  .header-actions, .shortcuts, .bottom-bar { display: none; }
+  .view-switch { flex: 1; }
+  .view-mode-btn { flex: 1; min-height: 38px; }
+  .map-view { display: none; }
+  .map-view.map-active { display: block; }
+  .tree-explorer-view { display: none; }
+  .tree-explorer-view.explorer-active { display: block; }
+}
+
 @media (max-width: 600px) {
-  .page-header { flex-direction: column; }
+  .page-header { flex-direction: row; }
+  .view-switch { width: 100%; }
   .shortcuts { display: none; }
 }
 </style>
