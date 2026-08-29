@@ -48,6 +48,24 @@
       </div>
     </div>
 
+    <!-- Mobile app actions: separate from map navigation -->
+    <div class="mobile-tree-actions" aria-label="Aksi Tree">
+      <label class="btn btn-ghost mobile-action-btn" title="Import JSON">
+        <span>📂 Import</span>
+        <input type="file" accept=".json" style="display:none" @change="handleImport" />
+      </label>
+      <button class="btn btn-ghost mobile-action-btn" type="button" @click="treeStore.exportJSON()" title="Export JSON">💾 Export</button>
+      <button class="btn btn-ghost mobile-action-btn" type="button" @click="exportPNG" title="Export PNG">🖼️ PNG</button>
+      <button class="btn btn-sheets mobile-action-btn" type="button" :disabled="sheetsLoading" @click="handleLoadSheets" title="Load dari Google Sheets">
+        <span v-if="treeStore.sheetsStatus === 'loading'">⏳ Loading...</span>
+        <span v-else>☁️ Load</span>
+      </button>
+      <button class="btn btn-sheets-save mobile-action-btn" type="button" :disabled="sheetsSaving" @click="handleSaveSheets" title="Save ke Google Sheets">
+        <span v-if="treeStore.sheetsStatus === 'saving'">⏳ Saving...</span>
+        <span v-else>☁️ Save</span>
+      </button>
+    </div>
+
     <!-- Shortcuts -->
     <div class="shortcuts">
       <span>🖱️ <b>Click</b> = expand/collapse</span>
@@ -69,7 +87,12 @@
 
     <!-- Tree views: same data, two presentations -->
     <div :class="['tree-canvas', 'map-view', { 'map-active': viewMode === 'map' }]">
-      <TreeDiagram ref="diagram" />
+      <div class="map-shell">
+        <div class="map-nav" aria-label="Navigasi peta">
+          <button class="btn btn-ghost map-fit-btn" type="button" @click="diagram?.fitView()" title="Fit to screen">⊡ Fit</button>
+        </div>
+        <TreeDiagram ref="diagram" />
+      </div>
     </div>
 
     <div :class="['tree-explorer-view', { 'explorer-active': viewMode === 'explorer' }]">
@@ -418,6 +441,9 @@ function exportPNG() {
   border-color: rgba(59,130,246,.22);
 }
 .tree-canvas, .tree-explorer-view { flex: 1; min-height: 0; min-width: 0; }
+.mobile-tree-actions { display: none; }
+.map-shell { width: 100%; height: 100%; min-height: 0; position: relative; }
+.map-nav { display: none; }
 .map-view { display: none; }
 .map-view.map-active { display: block; }
 .tree-explorer-view { display: none; overflow: hidden; }
@@ -430,6 +456,56 @@ function exportPNG() {
   .page-sub { display: none; }
   .header-actions, .shortcuts, .bottom-bar { display: none; }
   .view-switch { flex: 1; }
+
+  .mobile-tree-actions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 6px;
+    background: var(--surface, #1a2035);
+    border: 1px solid var(--border, #1e2330);
+    border-radius: 10px;
+    flex-shrink: 0;
+  }
+  .mobile-action-btn {
+    min-width: 0;
+    min-height: 36px;
+    justify-content: center;
+    padding: 6px 4px;
+    font-size: .68rem;
+    white-space: nowrap;
+  }
+  .mobile-action-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  .map-view.map-active {
+    display: block;
+    min-height: 0;
+    padding: 0 8px 10px;
+    box-sizing: border-box;
+  }
+  .map-shell {
+    border: 1px solid var(--border, #1e2330);
+    border-radius: 12px;
+    overflow: hidden;
+    background: var(--bg, #080c15);
+  }
+  .map-nav {
+    display: flex;
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 10;
+    padding: 3px;
+    border: 1px solid var(--border, #1e2330);
+    border-radius: 9px;
+    background: rgba(15,17,23,.88);
+    backdrop-filter: blur(6px);
+  }
+  .map-fit-btn {
+    min-height: 32px;
+    padding: 5px 9px;
+    font-size: .68rem;
+  }
   .view-mode-btn { flex: 1; min-height: 38px; }
   .map-view { display: none; }
   .map-view.map-active { display: block; }
